@@ -68,4 +68,4 @@ final-man-standing/
 
 ✍️ **Credits**  
 Built by **@Ominousx** 🎮  
-For feedback, open an issue or ping on X/Twitter: **@Ominousx**
+For feedback, open an issue or ping on X/Twitter: **_SushantJha**
