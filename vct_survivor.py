@@ -7,6 +7,43 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# ---- Icons + header/sidebar CSS ----
+def inject_icons_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400,0,0');
+    .ms {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal; font-style: normal;
+      font-size: 18px; display:inline-block; line-height: 0;
+      vertical-align: -4px; letter-spacing: normal; text-transform: none;
+      white-space: nowrap; direction: ltr; -webkit-font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
+    }
+    .ms-xl { font-size: 28px; vertical-align: -6px; }
+    .ms-muted { color: var(--muted, #9CA3AF); }
+    .ms-accent { color: var(--accent, #7C3AED); }
+
+    .main-header {
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 10px 14px; border-radius: 14px;
+      background: linear-gradient(120deg, rgba(124,58,237,.18), rgba(6,182,212,.14));
+      border: 1px solid rgba(255,255,255,.10);
+      margin-bottom: 10px;
+    }
+    .header-title {
+      display:flex; align-items:center; gap:10px;
+      font-size: 24px; font-weight: 800; letter-spacing: .5px;
+    }
+    .user-section { display:flex; flex-direction:column; align-items:flex-end; }
+    </style>
+    """, unsafe_allow_html=True)
+
+def ms(name: str, size: int = 18, cls: str = "") -> str:
+    style = f"font-size:{size}px" if size != 18 else ""
+    klass = "ms" + (f" {cls}" if cls else "")
+    return f'<span class="{klass}" style="{style}">{name}</span>'
+
 # ============================== Team Logos ==============================
 # Using base64 encoded placeholder logos for demo
 # In production, store actual logo files locally
@@ -14,7 +51,7 @@ def get_team_logo_placeholder(team_name):
     """Generate a styled placeholder for team logos"""
     colors = {
         "GEN": "#FF6B00", "GEN.G": "#FF6B00",
-        "FPX": "#E84855", "FNC": "#FF6900", 
+        "FPX": "#E84855", "FNC": "#FF6900",
         "TL": "#0C223F", "DRX": "#5B9BD5",
         "PRX": "#FFEC00", "T1": "#E2012D",
         "EDG": "#000000", "LOUD": "#00FF88",
@@ -23,17 +60,17 @@ def get_team_logo_placeholder(team_name):
         "NAVI": "#FFF200", "VIT": "#FFED00",
         "TH": "#FF1744", "KC": "#00D4FF"
     }
-    
+
     color = colors.get(team_name.upper(), "#7C3AED")
     # Return a colored square as placeholder
     return f"""
     <div style="
-        width: 80px; 
-        height: 80px; 
-        background: {color}; 
-        border-radius: 12px; 
-        display: flex; 
-        align-items: center; 
+        width: 80px;
+        height: 80px;
+        background: {color};
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
         justify-content: center;
         font-size: 24px;
         font-weight: bold;
@@ -90,16 +127,16 @@ def show_initial_login():
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
-    
+
     .stApp {
         background: #ffffff;
     }
-    
+
     /* Hide Streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
+
     .login-container {
         max-width: 400px;
         margin: 100px auto;
@@ -108,24 +145,24 @@ def show_initial_login():
         border-radius: 12px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     }
-    
+
     .app-logo {
         text-align: center;
         margin-bottom: 32px;
     }
-    
+
     .app-title {
         font-size: 24px;
         font-weight: 600;
         color: #202124;
         margin-bottom: 8px;
     }
-    
+
     .app-subtitle {
         font-size: 14px;
         color: #5f6368;
     }
-    
+
     .form-title {
         font-size: 20px;
         font-weight: 500;
@@ -133,21 +170,21 @@ def show_initial_login():
         text-align: center;
         margin-bottom: 8px;
     }
-    
+
     .form-subtitle {
         font-size: 14px;
         color: #5f6368;
         text-align: center;
         margin-bottom: 24px;
     }
-    
+
     .divider {
         text-align: center;
         margin: 24px 0;
         color: #5f6368;
         font-size: 14px;
     }
-    
+
     .terms-text {
         text-align: center;
         font-size: 12px;
@@ -155,16 +192,16 @@ def show_initial_login():
         margin-top: 24px;
         line-height: 18px;
     }
-    
+
     .terms-text a {
         color: #1a73e8;
         text-decoration: none;
     }
     </style>
     """, unsafe_allow_html=True)
-    
+
     col1, col2, col3 = st.columns([1, 1.2, 1])
-    
+
     with col2:
         # App branding
         st.markdown("""
@@ -173,16 +210,16 @@ def show_initial_login():
             <div class="app-subtitle">Official Tournament Prediction Platform</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Form title and subtitle
         st.markdown("""
         <div class="form-title">Create an account</div>
         <div class="form-subtitle">Enter your email to sign up for this app</div>
         """, unsafe_allow_html=True)
-        
+
         # Email input
         email = st.text_input("Email", placeholder="email@domain.com", key="initial_email", label_visibility="collapsed")
-        
+
         # Continue button
         if st.button("Continue", use_container_width=True, type="primary"):
             if email and '@' in email:
@@ -195,10 +232,10 @@ def show_initial_login():
                 st.rerun()
             else:
                 st.error("Please enter a valid email address")
-        
+
         # Divider
         st.markdown('<div class="divider">or</div>', unsafe_allow_html=True)
-        
+
         # Google Sign In button
         google_col = st.columns([1])[0]
         with google_col:
@@ -216,12 +253,12 @@ def show_initial_login():
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
+
             # Invisible button overlay - fixed the parameter issue
             if st.button("", key="google_btn", use_container_width=True):
                 st.session_state.show_google_signin = True
                 st.rerun()
-        
+
         # Apple Sign In button
         apple_col = st.columns([1])[0]
         with apple_col:
@@ -236,11 +273,11 @@ def show_initial_login():
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
+
             # Invisible button overlay - fixed the parameter issue
             if st.button("", key="apple_btn", use_container_width=True):
                 st.info("Apple Sign In coming soon")
-        
+
         # Terms
         st.markdown("""
         <div class="terms-text">
@@ -261,12 +298,12 @@ def show_google_signin():
         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         padding: 48px 40px 36px;
     }
-    
+
     .google-logo-container {
         text-align: center;
         margin-bottom: 24px;
     }
-    
+
     .signin-title {
         text-align: center;
         font-size: 24px;
@@ -274,7 +311,7 @@ def show_google_signin():
         color: #202124;
         margin-bottom: 8px;
     }
-    
+
     .signin-subtitle {
         text-align: center;
         font-size: 16px;
@@ -283,28 +320,28 @@ def show_google_signin():
     }
     </style>
     """, unsafe_allow_html=True)
-    
+
     col1, col2, col3 = st.columns([1, 1.2, 1])
-    
+
     with col2:
         # Google logo
         st.image("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png", width=150)
-        
+
         st.markdown("""
         <div class="signin-title">Sign in</div>
         <div class="signin-subtitle">Continue to VCT Survivor</div>
         """, unsafe_allow_html=True)
-        
+
         # Email input
         email = st.text_input("Email or phone", placeholder="Enter your email", key="google_email", label_visibility="collapsed")
-        
+
         # Forgot email link
         st.markdown("""
         <div style='margin-top: 8px; margin-bottom: 24px;'>
             <a href='#' style='color: #1a73e8; font-size: 14px; text-decoration: none;'>Forgot email?</a>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Privacy notice
         st.markdown("""
         <div style='color: #5f6368; font-size: 14px; line-height: 20px; margin-bottom: 32px;'>
@@ -312,7 +349,7 @@ def show_google_signin():
             <a href='#' style='color: #1a73e8; text-decoration: none;'>Learn more</a>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Buttons
         col_left, col_right = st.columns([1, 1])
         with col_left:
@@ -354,12 +391,12 @@ def inject_premium_css():
         --warn: #f59e0b;
         --bad: #ef4444;
     }
-    
+
     .stApp {
         background: linear-gradient(135deg, #0B0F19 0%, #1a1f2e 100%);
         color: var(--text);
     }
-    
+
     /* Navigation Sidebar */
     .nav-sidebar {
         background: rgba(16, 24, 38, 0.95);
@@ -367,7 +404,7 @@ def inject_premium_css():
         padding: 20px;
         height: 100vh;
     }
-    
+
     .nav-item {
         padding: 12px 16px;
         margin: 8px 0;
@@ -379,19 +416,19 @@ def inject_premium_css():
         align-items: center;
         gap: 12px;
     }
-    
+
     .nav-item:hover {
         background: rgba(124,58,237,0.1);
         color: #E5E7EB;
         transform: translateX(4px);
     }
-    
+
     .nav-item.active {
         background: linear-gradient(90deg, rgba(124,58,237,0.2), rgba(6,182,212,0.1));
         color: white;
         border-left: 3px solid var(--accent);
     }
-    
+
     /* Header */
     .main-header {
         background: rgba(16, 24, 38, 0.8);
@@ -405,7 +442,7 @@ def inject_premium_css():
         top: 0;
         z-index: 100;
     }
-    
+
     .header-title {
         font-family: 'Bebas Neue', sans-serif;
         font-size: 32px;
@@ -414,7 +451,7 @@ def inject_premium_css():
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
-    
+
     .user-section {
         display: flex;
         align-items: center;
@@ -424,7 +461,7 @@ def inject_premium_css():
         border-radius: 12px;
         padding: 8px 16px;
     }
-    
+
     /* Cards */
     .game-card {
         background: rgba(16, 24, 38, 0.6);
@@ -433,7 +470,7 @@ def inject_premium_css():
         padding: 24px;
         backdrop-filter: blur(10px);
     }
-    
+
     /* Leaderboard Styling */
     .leaderboard-container {
         background: linear-gradient(135deg, rgba(124,58,237,0.05), rgba(6,182,212,0.03));
@@ -441,7 +478,7 @@ def inject_premium_css():
         border-radius: 16px;
         padding: 4px;
     }
-    
+
     .leaderboard-row {
         display: flex;
         align-items: center;
@@ -452,13 +489,13 @@ def inject_premium_css():
         transition: all 0.2s ease;
         border: 1px solid transparent;
     }
-    
+
     .leaderboard-row:hover {
         transform: translateX(4px);
         background: rgba(124,58,237,0.1);
         border: 1px solid rgba(124,58,237,0.3);
     }
-    
+
     .rank-badge {
         width: 32px;
         height: 32px;
@@ -469,12 +506,12 @@ def inject_premium_css():
         font-weight: 800;
         margin-right: 12px;
     }
-    
+
     .rank-1 { background: linear-gradient(135deg, #FFD700, #FFA500); color: white; }
     .rank-2 { background: linear-gradient(135deg, #C0C0C0, #808080); color: white; }
     .rank-3 { background: linear-gradient(135deg, #CD7F32, #8B4513); color: white; }
     .rank-other { background: rgba(124,58,237,0.2); color: #A78BFA; }
-    
+
     .status-alive {
         background: linear-gradient(90deg, #22c55e, #16a34a);
         color: white;
@@ -483,7 +520,7 @@ def inject_premium_css():
         font-size: 11px;
         font-weight: 700;
     }
-    
+
     .status-dead {
         background: linear-gradient(90deg, #ef4444, #dc2626);
         color: white;
@@ -492,7 +529,7 @@ def inject_premium_css():
         font-size: 11px;
         font-weight: 700;
     }
-    
+
     /* Stats Cards */
     .stat-card {
         background: linear-gradient(135deg, rgba(124,58,237,0.1), rgba(6,182,212,0.05));
@@ -501,20 +538,20 @@ def inject_premium_css():
         padding: 16px;
         text-align: center;
     }
-    
+
     .stat-value {
         font-size: 28px;
         font-weight: 800;
         color: var(--accent);
     }
-    
+
     .stat-label {
         font-size: 12px;
         color: var(--muted);
         text-transform: uppercase;
         letter-spacing: 1px;
     }
-    
+
     /* Badges */
     .badge {
         display: inline-block;
@@ -524,14 +561,14 @@ def inject_premium_css():
         font-weight: 700;
         letter-spacing: 0.5px;
     }
-    
+
     .alive { background: rgba(34,197,94,.12); color: #86efac; }
     .dead { background: rgba(239,68,68,.12); color: #fca5a5; }
-    
+
     /* Hide Streamlit defaults */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
+
     /* Buttons */
     div.stButton > button {
         background: linear-gradient(90deg, var(--accent), var(--accent2));
@@ -542,7 +579,7 @@ def inject_premium_css():
         font-weight: 600;
         transition: all 0.2s;
     }
-    
+
     div.stButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(124,58,237,0.4);
@@ -719,20 +756,28 @@ def countdown_to(dt_iso: str):
 
 # ============================== Page Components ==============================
 def render_header():
-    """Render the main header with user info"""
+    """Render the main header with user info (icons, no emojis)"""
+    name = st.session_state.get("user_name") or "Guest"
+    email = st.session_state.get("user_email") or ""
+
     st.markdown(f"""
     <div class="main-header">
-        <div class="header-title">🎮 VCT SURVIVOR</div>
+        <div class="header-title">
+            {ms("sports_esports", 28, "ms-accent")}
+            <div>VCT SURVIVOR</div>
+        </div>
         <div class="user-section">
-            <span style="color: #E5E7EB;">👤 {st.session_state.user_name}</span>
-            <span style="color: #9CA3AF; font-size: 12px;">{st.session_state.user_email}</span>
+            <span style="color: #E5E7EB;">{ms("person",18)} {name}</span>
+            <span style="color: #9CA3AF; font-size: 12px;">{email}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Logout button in sidebar
+
+    # Sidebar sign-out (icon + button)
     with st.sidebar:
-        if st.button("🚪 Sign Out", use_container_width=True):
+        c1, c2 = st.columns([0.15, 0.85])
+        c1.markdown(ms("logout", 18, "ms-muted"), unsafe_allow_html=True)
+        if c2.button("Sign Out", use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.user_email = None
             st.session_state.user_name = None
@@ -740,32 +785,37 @@ def render_header():
             st.rerun()
 
 def render_sidebar():
-    """Render navigation sidebar"""
+    """Render navigation sidebar (icons + buttons)"""
     with st.sidebar:
-        st.markdown("## 🎮 Navigation")
-        
-        pages = ["🏠 Home", "🏆 Leaderboard", "📊 My Stats", "🗓️ Schedule", "⚙️ Admin"]
-        
-        for page in pages:
-            if st.button(page, key=f"nav_{page}", use_container_width=True):
-                st.session_state.current_page = page.split()[1]
+        st.markdown("## Navigation")
+        nav_items = [
+            ("home",            "Home"),
+            ("leaderboard",     "Leaderboard"),
+            ("insights",        "My Stats"),
+            ("calendar_month",  "Schedule"),
+            ("settings",        "Admin"),
+        ]
+        for icon_name, label in nav_items:
+            c1, c2 = st.columns([0.18, 0.82])
+            c1.markdown(ms(icon_name, 18, "ms-muted"), unsafe_allow_html=True)
+            if c2.button(label, key=f"nav_{label}", use_container_width=True):
+                st.session_state.current_page = label  # keep a clean page key
                 st.rerun()
-        
+
         st.markdown("---")
         st.markdown("### Quick Stats")
-        
-        # Load data for quick stats
+
         results_df = judge_results(load_schedule(), load_picks())
-        user = st.session_state.user_name
-        me = results_df[results_df["user"]==user]
-        
-        wins = int((me["result"]=="Win").sum()) if not me.empty else 0
-        losses = int((me["result"]=="Loss").sum()) if not me.empty else 0
-        
-        col1, col2 = st.columns(2)
-        with col1:
+        user = st.session_state.get("user_name") or ""
+        me = results_df[results_df["user"] == user]
+
+        wins = int((me["result"] == "Win").sum()) if not me.empty else 0
+        losses = int((me["result"] == "Loss").sum()) if not me.empty else 0
+
+        c1, c2 = st.columns(2)
+        with c1:
             st.metric("Wins", wins)
-        with col2:
+        with c2:
             st.metric("Losses", losses)
 
 def page_home():
@@ -776,26 +826,25 @@ def page_home():
     results_df = judge_results(schedule_df, picks_df)
     lb_df = compute_leaderboard(results_df)
     user = st.session_state.user_name
-    
+
     # Check if alive
     is_alive = True
     me = results_df[results_df["user"]==user]
     if not me.empty and any(me["result"]=="Loss"):
         is_alive = False
-    
+
     # Status badge
     st.markdown(f"""
     <div style='text-align: center; margin: 20px 0;'>
         {badge("ALIVE", "alive") if is_alive else badge("ELIMINATED", "dead")}
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Main content
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
-        st.markdown("## Current Match Assignment")
-        
+        st.markdown(f"## {ms('flag',22,'ms-accent')} Current Match Assignment", unsafe_allow_html=True)
         act = active_stage(schedule_df)
         if not act:
             st.info("No active stage. Wait for the next stage to begin.")
@@ -807,38 +856,38 @@ def page_home():
                     <p style='color: #9CA3AF;'>Stage {act["stage_id"]}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                
+
                 mid, assign_df = get_or_make_assignment(user, act["stage_id"], assign_df, schedule_df)
                 if mid:
                     mrow = schedule_df[schedule_df["match_id"]==mid].iloc[0]
-                    
+
                     # Match display with team logos
                     st.markdown(f"**Match ID:** `{mid}`")
-                    
+
                     col_team1, col_vs, col_team2 = st.columns([2, 1, 2])
-                    
+
                     with col_team1:
                         st.markdown(get_team_logo_placeholder(mrow['team_a']), unsafe_allow_html=True)
                         st.markdown(f"<h3 style='text-align: center; color: #E5E7EB; margin: 0;'>{mrow['team_a']}</h3>", unsafe_allow_html=True)
-                    
+
                     with col_vs:
                         st.markdown("""
                         <div style="text-align: center; padding-top: 30px;">
                             <h2 style="color: #9CA3AF;">VS</h2>
                         </div>
                         """, unsafe_allow_html=True)
-                    
+
                     with col_team2:
                         st.markdown(get_team_logo_placeholder(mrow['team_b']), unsafe_allow_html=True)
                         st.markdown(f"<h3 style='text-align: center; color: #E5E7EB; margin: 0;'>{mrow['team_b']}</h3>", unsafe_allow_html=True)
-                    
+
                     # Match timing info
                     col_time1, col_time2 = st.columns(2)
                     with col_time1:
                         st.markdown(f"⏱️ **Starts in:** {countdown_to(mrow['match_time_iso'])}")
                     with col_time2:
                         st.markdown(f"🔒 **Locks:** {LOCK_MINUTES_BEFORE}m before")
-                    
+
                     # Pick form
                     existing = picks_df[(picks_df["user"]==user) & (picks_df["stage_id"]==act["stage_id"])]
                     if not existing.empty:
@@ -858,7 +907,7 @@ def page_home():
                                 else:
                                     st.error(msg)
                 save_assign(assign_df)
-    
+
     with col2:
         st.markdown("## Quick Leaderboard")
         if not lb_df.empty:
@@ -867,7 +916,7 @@ def page_home():
                 rank = idx + 1
                 rank_class = f"rank-{rank}" if rank <= 3 else "rank-other"
                 rank_icon = "👑" if rank == 1 else f"#{rank}"
-                
+
                 st.markdown(f'''
                 <div class="leaderboard-row">
                     <div class="rank-badge {rank_class}">{rank_icon}</div>
@@ -884,9 +933,9 @@ def page_leaderboard():
     """Full leaderboard page"""
     results_df = judge_results(load_schedule(), load_picks())
     lb_df = compute_leaderboard(results_df)
-    
+
     st.markdown("# 🏆 Global Leaderboard")
-    
+
     if lb_df.empty:
         st.info("No players have made picks yet")
     else:
@@ -920,18 +969,18 @@ def page_leaderboard():
                 <div class="stat-label">Max Wins</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         st.markdown("---")
-        
+
         # Full leaderboard
         st.markdown('<div class="leaderboard-container" style="margin-top: 20px;">', unsafe_allow_html=True)
         for idx, row in lb_df.iterrows():
             rank = idx + 1
             rank_class = f"rank-{rank}" if rank <= 3 else "rank-other"
             rank_icon = "👑" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
-            
+
             stage_info = f" (Stage {int(row['first_loss_stage'])})" if not row['alive'] and pd.notna(row.get('first_loss_stage')) else ""
-            
+
             st.markdown(f'''
             <div class="leaderboard-row">
                 <div class="rank-badge {rank_class}">{rank_icon}</div>
@@ -950,17 +999,17 @@ def page_my_stats():
     picks_df = load_picks()
     results_df = judge_results(load_schedule(), picks_df)
     my_results = results_df[results_df["user"]==user]
-    
+
     st.markdown("# 📊 My Statistics")
-    
+
     # Stats cards
     col1, col2, col3, col4 = st.columns(4)
-    
+
     wins = int((my_results["result"]=="Win").sum()) if not my_results.empty else 0
     losses = int((my_results["result"]=="Loss").sum()) if not my_results.empty else 0
     waiting = int((my_results["result"]=="Waiting").sum()) if not my_results.empty else 0
     total = len(my_results)
-    
+
     with col1:
         st.metric("Total Picks", total)
     with col2:
@@ -969,9 +1018,9 @@ def page_my_stats():
         st.metric("Losses", losses)
     with col4:
         st.metric("Pending", waiting)
-    
+
     st.markdown("---")
-    
+
     # Pick history
     st.markdown("## Pick History")
     my_picks = picks_df[picks_df["user"]==user]
@@ -983,9 +1032,9 @@ def page_my_stats():
 def page_schedule():
     """Schedule page"""
     schedule_df = load_schedule()
-    
+
     st.markdown("# 🗓️ Match Schedule")
-    
+
     if schedule_df.empty:
         st.info("No matches scheduled yet")
     else:
@@ -994,14 +1043,14 @@ def page_schedule():
 def page_admin():
     """Admin page"""
     st.markdown("# ⚙️ Admin Panel")
-    
+
     entered = st.text_input("Admin key:", type="password")
     if entered and os.environ.get(ADMIN_KEY_ENV) and entered == os.environ[ADMIN_KEY_ENV]:
         st.success("Admin access granted")
-        
+
         schedule_df = load_schedule()
         st.download_button("📥 Download schedule.csv", schedule_df.to_csv(index=False), "schedule.csv")
-        
+
         up = st.file_uploader("📤 Upload new schedule.csv", type=["csv"])
         if up:
             new_sched = pd.read_csv(up, dtype=str).fillna("")
@@ -1015,13 +1064,13 @@ def page_admin():
 def main_app():
     inject_premium_css()
     ensure_files()
-    
+
     render_header()
     render_sidebar()
-    
+
     # Route to appropriate page
     page = st.session_state.current_page
-    
+
     if page == "Home":
         page_home()
     elif page == "Leaderboard":
@@ -1038,7 +1087,7 @@ def main_app():
 # ============================== Main Entry Point ==============================
 if __name__ == "__main__":
     init_session_state()
-    
+
     if not st.session_state.authenticated:
         if st.session_state.show_google_signin:
             show_google_signin()
