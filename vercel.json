@@ -1,12 +1,12 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
+  "buildCommand": "cd vct-survivor-web && npm install && npm run build",
+  "outputDirectory": "vct-survivor-web/.next",
   "framework": "nextjs",
-  "installCommand": "npm install",
-  "devCommand": "npm run dev",
+  "installCommand": "cd vct-survivor-web && npm install",
+  "devCommand": "cd vct-survivor-web && npm run dev",
   "regions": ["iad1"],
   "functions": {
-    "app/**/*.tsx": {
+    "vct-survivor-web/app/**/*.tsx": {
       "maxDuration": 30
     }
   }

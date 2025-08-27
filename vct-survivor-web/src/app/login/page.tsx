@@ -26,12 +26,13 @@ export default function LoginPage() {
     setSuccessMessage("");
 
     try {
-      await login(name, email, password);
+      // Mock authentication - in real app, validate credentials with API
+      login({ name, email, role: "user" });
       setSuccessMessage("Login successful! Redirecting...");
       setTimeout(() => {
         router.push("/");
       }, 1000);
-    } catch (err) {
+    } catch {
       setError("Invalid credentials. Please try again.");
     } finally {
       setIsLoading(false);
@@ -138,7 +139,7 @@ export default function LoginPage() {
             </form>
             <div className="mt-6 text-center space-y-3">
               <div className="text-sm">
-                <span className="text-gray-400">Don't have an account? </span>
+                <span className="text-gray-400">Don&apos;t have an account? </span>
                 <Link href="/register" className="text-white hover:text-gray-300 underline">
                   Sign up
                 </Link>
