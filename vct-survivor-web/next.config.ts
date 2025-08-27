@@ -4,7 +4,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd()
   },
-  output: 'standalone'
+  output: 'standalone',
+  experimental: {
+    serverComponentsExternalPackages: []
+  }
 };
 
 export default nextConfig;
