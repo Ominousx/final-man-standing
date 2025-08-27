@@ -66,7 +66,7 @@ export default function LoginPage() {
               className="object-contain"
             />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">VCT Survivor</h1>
+          <h1 className="text-3xl font-bold text-yellow-400 mb-2">VCT Survivor</h1>
           <p className="text-gray-400">Tournament Pool Management</p>
         </div>
 

@@ -684,7 +684,7 @@ export default function Home() {
               />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">VCT Survivor</h1>
+              <h1 className="text-lg font-bold text-yellow-400">VCT Survivor</h1>
               <p className="text-xs text-gray-400">Tournament Pool</p>
             </div>
           </div>

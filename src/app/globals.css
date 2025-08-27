@@ -39,6 +39,11 @@
 }
 
 @layer components {
+  .vct-title {
+    @apply text-amber-300 font-black tracking-wider;
+    text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+  }
+  
   .game-card {
     @apply bg-gradient-to-br from-card to-secondary border-2 border-border rounded-2xl p-6 shadow-2xl transition-all duration-300 hover:border-primary hover:shadow-primary/20 hover:-translate-y-1;
   }

@@ -8,68 +8,93 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-interface User {
-  email: string;
-  name: string;
-}
-
-interface Match {
-  id: string;
-  teamA: string;
-  teamB: string;
-  startTime: string;
-  stage: string;
-  status: "upcoming" | "live" | "completed";
-  winner?: string;
-}
-
-interface LeaderboardEntry {
-  rank: number;
-  user: string;
-  wins: number;
-  status: "alive" | "eliminated";
-  eliminatedAt?: string;
-}
+import { 
+  getUser, 
+  assignMatchToUser, 
+  getUserCurrentMatch, 
+  submitPick, 
+  getLeaderboard, 
+  getUserStats,
+  getUserPicks,
+  completeMatch,
+  type User,
+  type Match,
+  type UserPick
+} from "@/lib/data";
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState("");
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string>("");
+  const [userPicks, setUserPicks] = useState<UserPick[]>([]);
+  const [userStats, setUserStats] = useState<any>(null);
+  const [hasPicked, setHasPicked] = useState(false);
 
-  // Mock data for demonstration
+  // Load user data and match assignment
   useEffect(() => {
-    // Simulate loading data
-    setCurrentMatch({
-      id: "UF-1-A",
-      teamA: "Sentinels",
-      teamB: "G2",
-      startTime: "2024-01-20T15:00:00Z",
-      stage: "Lower Decider",
-      status: "upcoming"
-    });
+    if (user) {
+      // Get or assign current match
+      let match = getUserCurrentMatch(user.id);
+      if (!match) {
+        match = assignMatchToUser(user.id);
+      }
+      setCurrentMatch(match);
 
-    setLeaderboard([
-      { rank: 1, user: "jhasushant1999", wins: 3, status: "alive" },
-      { rank: 2, user: "kunalsoni96", wins: 2, status: "alive" },
-      { rank: 3, user: "gamer123", wins: 1, status: "eliminated", eliminatedAt: "Stage 2" },
-    ]);
-  }, []);
+      // Load user picks and stats
+      const picks = getUserPicks(user.id);
+      setUserPicks(picks);
+      setUserStats(getUserStats(user.id));
+
+      // Check if user already picked for current match
+      if (match) {
+        const hasPickedForMatch = picks.some(p => p.matchId === match!.id);
+        setHasPicked(hasPickedForMatch);
+      }
+
+      // Load leaderboard
+      setLeaderboard(getLeaderboard());
+    }
+  }, [user]);
 
   const handleLogin = () => {
     if (email && email.includes('@')) {
-      setUser({ email, name: email.split('@')[0] });
+      const newUser = getUser(email);
+      setUser(newUser);
       setIsAuthenticated(true);
     }
   };
 
   const handlePick = () => {
-    if (selectedTeam && currentMatch) {
-      // Handle pick submission
-      console.log(`Picked ${selectedTeam} for match ${currentMatch.id}`);
+    if (selectedTeam && currentMatch && user) {
+      const success = submitPick(user.id, currentMatch.id, selectedTeam);
+      if (success) {
+        setHasPicked(true);
+        // Reload user data
+        const picks = getUserPicks(user.id);
+        setUserPicks(picks);
+        setUserStats(getUserStats(user.id));
+        setSelectedTeam("");
+      }
+    }
+  };
+
+  const handleCompleteMatch = (winner: string) => {
+    if (currentMatch) {
+      completeMatch(currentMatch.id, winner);
+      // Reload data
+      if (user) {
+        let newMatch = getUserCurrentMatch(user.id);
+        if (!newMatch) {
+          newMatch = assignMatchToUser(user.id);
+        }
+        setCurrentMatch(newMatch);
+        setLeaderboard(getLeaderboard());
+        setUserStats(getUserStats(user.id));
+        setHasPicked(false);
+      }
     }
   };
 
@@ -83,7 +108,7 @@ export default function Home() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-3xl font-bold text-primary">VCT SURVIVOR</CardTitle>
+            <CardTitle className="text-3xl vct-title">VCT SURVIVOR</CardTitle>
             <CardDescription>Official Tournament Prediction Platform</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -116,7 +141,7 @@ export default function Home() {
             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-lg">V</span>
             </div>
-            <h1 className="text-2xl font-bold">VCT SURVIVOR</h1>
+            <h1 className="text-2xl vct-title">VCT SURVIVOR</h1>
           </div>
           <div className="flex items-center space-x-4">
             <div className="text-right">
@@ -143,9 +168,14 @@ export default function Home() {
           <TabsContent value="home" className="space-y-6">
             {/* Status Badge */}
             <div className="text-center">
-              <Badge variant="secondary" className="text-lg px-6 py-2">
-                ALIVE
+              <Badge variant={user?.isAlive ? "default" : "destructive"} className="text-lg px-6 py-2">
+                {user?.isAlive ? "ALIVE" : "ELIMINATED"}
               </Badge>
+              {!user?.isAlive && user?.eliminatedAt && (
+                <div className="text-sm text-muted-foreground mt-2">
+                  Eliminated at {user.eliminatedAt}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -156,10 +186,10 @@ export default function Home() {
                     <CardTitle className="text-center text-xl">Current Match Assignment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {currentMatch && (
+                    {currentMatch ? (
                       <>
                         <div className="text-center text-sm text-muted-foreground">
-                          Match ID: {currentMatch.id}
+                          Match ID: {currentMatch.id} • Stage: {currentMatch.stage}
                         </div>
                         
                         <div className="flex items-center justify-center space-x-8">
@@ -191,21 +221,57 @@ export default function Home() {
                           </div>
                         </div>
 
-                        <div className="space-y-3">
-                          <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select winner" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={currentMatch.teamA}>{currentMatch.teamA}</SelectItem>
-                              <SelectItem value={currentMatch.teamB}>{currentMatch.teamB}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button onClick={handlePick} className="w-full" disabled={!selectedTeam}>
-                            Lock Pick ✅
-                          </Button>
+                        {hasPicked ? (
+                          <div className="text-center">
+                            <Badge variant="default" className="text-lg px-6 py-2">
+                              ✅ Pick Locked
+                            </Badge>
+                            <div className="text-sm text-muted-foreground mt-2">
+                              Waiting for match result...
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select winner" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={currentMatch.teamA}>{currentMatch.teamA}</SelectItem>
+                                <SelectItem value={currentMatch.teamB}>{currentMatch.teamB}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button onClick={handlePick} className="w-full" disabled={!selectedTeam}>
+                              Lock Pick ✅
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Admin section for testing */}
+                        <div className="border-t pt-4">
+                          <div className="text-sm text-muted-foreground mb-2">Admin: Complete Match</div>
+                          <div className="flex space-x-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleCompleteMatch(currentMatch.teamA)}
+                            >
+                              {currentMatch.teamA} Wins
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleCompleteMatch(currentMatch.teamB)}
+                            >
+                              {currentMatch.teamB} Wins
+                            </Button>
+                          </div>
                         </div>
                       </>
+                    ) : (
+                      <div className="text-center text-muted-foreground">
+                        No matches available at the moment.
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -220,22 +286,22 @@ export default function Home() {
                   <CardContent>
                     <div className="space-y-3">
                       {leaderboard.slice(0, 5).map((entry) => (
-                        <div key={entry.rank} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                        <div key={entry.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                           <div className="flex items-center space-x-3">
                             <Badge variant="secondary" className="w-8 h-8 p-0 flex items-center justify-center">
                               {entry.rank === 1 ? "👑" : entry.rank}
                             </Badge>
-                            <span className="font-medium">{entry.user}</span>
+                            <span className="font-medium">{entry.name}</span>
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className="text-sm bg-muted px-2 py-1 rounded">
                               {entry.wins}W
                             </span>
                             <Badge 
-                              variant={entry.status === "alive" ? "default" : "destructive"}
+                              variant={entry.isAlive ? "default" : "destructive"}
                               className="text-xs"
                             >
-                              {entry.status === "alive" ? "ALIVE" : "DEAD"}
+                              {entry.isAlive ? "ALIVE" : "DEAD"}
                             </Badge>
                           </div>
                         </div>
@@ -255,14 +321,14 @@ export default function Home() {
               <CardContent>
                 <div className="space-y-3">
                   {leaderboard.map((entry) => (
-                    <div key={entry.rank} className="flex items-center justify-between p-4 bg-secondary rounded-lg">
+                    <div key={entry.id} className="flex items-center justify-between p-4 bg-secondary rounded-lg">
                       <div className="flex items-center space-x-4">
                         <Badge variant="secondary" className="w-10 h-10 p-0 flex items-center justify-center text-lg">
                           {entry.rank === 1 ? "👑" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : entry.rank}
                         </Badge>
                         <div>
-                          <div className="font-semibold">{entry.user}</div>
-                          {entry.status === "eliminated" && entry.eliminatedAt && (
+                          <div className="font-semibold">{entry.name}</div>
+                          {!entry.isAlive && entry.eliminatedAt && (
                             <div className="text-sm text-muted-foreground">Eliminated at {entry.eliminatedAt}</div>
                           )}
                         </div>
@@ -272,9 +338,9 @@ export default function Home() {
                           {entry.wins} WINS
                         </Badge>
                         <Badge 
-                          variant={entry.status === "alive" ? "default" : "destructive"}
+                          variant={entry.isAlive ? "default" : "destructive"}
                         >
-                          {entry.status === "alive" ? "ALIVE" : "DEAD"}
+                          {entry.isAlive ? "ALIVE" : "DEAD"}
                         </Badge>
                       </div>
                     </div>
@@ -290,24 +356,28 @@ export default function Home() {
                 <CardTitle className="text-2xl text-center">📊 My Statistics</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-secondary rounded-lg">
-                    <div className="text-3xl font-bold text-primary">3</div>
-                    <div className="text-sm text-muted-foreground">Total Picks</div>
+                {userStats ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-secondary rounded-lg">
+                      <div className="text-3xl font-bold text-primary">{userStats.totalPicks}</div>
+                      <div className="text-sm text-muted-foreground">Total Picks</div>
+                    </div>
+                    <div className="text-center p-4 bg-secondary rounded-lg">
+                      <div className="text-3xl font-bold text-primary">{userStats.wins}</div>
+                      <div className="text-sm text-muted-foreground">Wins</div>
+                    </div>
+                    <div className="text-center p-4 bg-secondary rounded-lg">
+                      <div className="text-3xl font-bold text-primary">{userStats.losses}</div>
+                      <div className="text-sm text-muted-foreground">Losses</div>
+                    </div>
+                    <div className="text-center p-4 bg-secondary rounded-lg">
+                      <div className="text-3xl font-bold text-primary">{userStats.pending}</div>
+                      <div className="text-sm text-muted-foreground">Pending</div>
+                    </div>
                   </div>
-                  <div className="text-center p-4 bg-secondary rounded-lg">
-                    <div className="text-3xl font-bold text-primary">2</div>
-                    <div className="text-sm text-muted-foreground">Wins</div>
-                  </div>
-                  <div className="text-center p-4 bg-secondary rounded-lg">
-                    <div className="text-3xl font-bold text-primary">1</div>
-                    <div className="text-sm text-muted-foreground">Losses</div>
-                  </div>
-                  <div className="text-center p-4 bg-secondary rounded-lg">
-                    <div className="text-3xl font-bold text-primary">0</div>
-                    <div className="text-sm text-muted-foreground">Pending</div>
-                  </div>
-                </div>
+                ) : (
+                  <div className="text-center text-muted-foreground">No statistics available.</div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -319,9 +389,9 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[1, 2, 3].map((stage) => (
+                  {["Lower Decider", "Upper Final", "Grand Final", "Championship"].map((stage, index) => (
                     <div key={stage} className="p-4 bg-secondary rounded-lg">
-                      <h3 className="font-semibold mb-3">Stage {stage}</h3>
+                      <h3 className="font-semibold mb-3">{stage}</h3>
                       <div className="space-y-3">
                         {[1, 2].map((match) => (
                           <div key={match} className="flex items-center justify-between p-3 bg-background rounded">
@@ -336,7 +406,7 @@ export default function Home() {
                               </div>
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              Jan {20 + stage}, 2024
+                              Jan {20 + index}, 2024
                             </div>
                           </div>
                         ))}
