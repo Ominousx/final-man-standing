@@ -159,7 +159,6 @@ def inject_premium_css():
         padding: 16px;
         margin: 5px 0;
         box-shadow: var(--shadow);
-        min-height: 400px;
         overflow-y: auto;
     }
     
@@ -329,6 +328,73 @@ def inject_premium_css():
     }
     
     #MainMenu, footer, header { visibility: hidden; }
+    
+    /* Sidebar specific styling */
+    .css-1d391kg { 
+        background-color: var(--panel) !important;
+        border-right: 2px solid var(--border) !important;
+    }
+    
+    .css-1lcbmhc {
+        background-color: var(--panel) !important;
+    }
+    
+    /* Remove problematic sidebar positioning */
+    section[data-testid="stSidebar"] {
+        display: block !important;
+        visibility: visible !important;
+        background: var(--panel) !important;
+        border-right: 2px solid var(--border) !important;
+    }
+    
+    section[data-testid="stSidebar"] > div {
+        background: var(--panel) !important;
+        padding: 20px !important;
+        color: var(--text) !important;
+    }
+    
+    /* Remove the main content padding that was causing issues */
+    .main .block-container {
+        padding-left: 1rem !important;
+        max-width: none !important;
+    }
+    
+    section[data-testid="stSidebar"] .stButton > button {
+        background: var(--panel-dark) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 8px !important;
+        width: 100% !important;
+        text-align: left !important;
+        padding: 10px 15px !important;
+        margin: 5px 0 !important;
+        font-weight: 600 !important;
+    }
+    
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: var(--hover) !important;
+        border-color: var(--accent) !important;
+    }
+    
+    section[data-testid="stSidebar"] h3 {
+        color: var(--text) !important;
+        font-weight: 700 !important;
+    }
+    
+    section[data-testid="stSidebar"] hr {
+        border-color: var(--border) !important;
+    }
+    
+    section[data-testid="stSidebar"] .stMarkdown {
+        color: var(--text) !important;
+    }
+    
+    section[data-testid="stSidebar"] .stMetric {
+        background: var(--panel-dark) !important;
+        padding: 8px !important;
+        border-radius: 6px !important;
+        border: 1px solid var(--border) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -747,43 +813,57 @@ def render_header():
     """, unsafe_allow_html=True)
 
 def render_sidebar():
-    with st.sidebar:
-        st.markdown("### Navigation")
-        
-        nav_buttons = [
-            ("Home", "🏠"),
-            ("Leaderboard", "🏆"), 
-            ("My Stats", "📊"),
-            ("Schedule", "📅"),
-            ("Admin", "⚙️")
-        ]
-        
-        for button_name, emoji in nav_buttons:
-            if st.button(f"{emoji} {button_name}", key=f"nav_{button_name}", use_container_width=True):
-                st.session_state.current_page = button_name
-                st.rerun()
+    # Debug: Force sidebar creation and add visible content
+    st.sidebar.markdown("# 🎯 VCT SURVIVOR")
+    st.sidebar.markdown("---")
+    
+    # Force sidebar to be visible and populated
+    st.sidebar.markdown("### Navigation")
+    
+    nav_buttons = [
+        ("Home", "🏠"),
+        ("Leaderboard", "🏆"), 
+        ("My Stats", "📊"),
+        ("Schedule", "📅"),
+        ("Admin", "⚙️")
+    ]
+    
+    for button_name, emoji in nav_buttons:
+        if st.sidebar.button(f"{emoji} {button_name}", key=f"nav_{button_name}"):
+            st.session_state.current_page = button_name
+            st.rerun()
 
-        st.markdown("---")
-        st.markdown("### Quick Stats")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Quick Stats")
 
+    try:
         results_df = judge_results(load_schedule(), load_picks())
-        user = st.session_state.get("user_name") or ""
+        user = st.session_state.get("user_name", "")
         me = results_df[results_df["user"] == user]
 
         wins = int((me["result"] == "Win").sum()) if not me.empty else 0
         losses = int((me["result"] == "Loss").sum()) if not me.empty else 0
 
-        c1, c2 = st.columns(2)
-        with c1: st.metric("Wins", wins)
-        with c2: st.metric("Losses", losses)
-        
-        st.markdown("---")
-        if st.button("Sign Out", key="sign_out"):
-            for key in ['authenticated', 'user_email', 'user_name', 'riot_id']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.session_state.current_page = "Home"
-            st.rerun()
+        col1, col2 = st.sidebar.columns(2)
+        with col1: 
+            st.metric("Wins", wins)
+        with col2: 
+            st.metric("Losses", losses)
+    except Exception as e:
+        st.sidebar.write("Stats: 0 wins, 0 losses")
+    
+    st.sidebar.markdown("---")
+    
+    # Add user info to sidebar
+    user_name = st.session_state.get("user_name", "Guest")
+    st.sidebar.markdown(f"**Logged in as:** {user_name}")
+    
+    if st.sidebar.button("🚪 Sign Out", key="sign_out"):
+        for key in ['authenticated', 'user_email', 'user_name', 'riot_id']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.session_state.current_page = "Home"
+        st.rerun()
 
 # ============================== Pages ==============================
 def page_home():
@@ -954,6 +1034,10 @@ def page_admin():
 def main_app():
     inject_premium_css()
     ensure_files()
+    
+    # Force sidebar initialization first
+    st.sidebar.write("")  # This forces Streamlit to create the sidebar container
+    
     render_header()
     render_sidebar()
 
