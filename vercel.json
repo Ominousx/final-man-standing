@@ -4,10 +4,5 @@
   "framework": "nextjs",
   "installCommand": "cd vct-survivor-web && npm install",
   "devCommand": "cd vct-survivor-web && npm run dev",
-  "regions": ["iad1"],
-  "functions": {
-    "vct-survivor-web/app/**/*.tsx": {
-      "maxDuration": 30
-    }
-  }
+  "regions": ["iad1"]
 }
