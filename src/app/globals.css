@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 45 30% 60%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 20%;
+    --input: 0 0% 15%;
+    --ring: 45 30% 60%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-['Poppins'];
+  }
+}
+
+@layer components {
+  .game-card {
+    @apply bg-gradient-to-br from-card to-secondary border-2 border-border rounded-2xl p-6 shadow-2xl transition-all duration-300 hover:border-primary hover:shadow-primary/20 hover:-translate-y-1;
+  }
+  
+  .team-logo {
+    @apply w-20 h-20 rounded-full border-3 border-primary shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-primary/50;
+  }
+  
+  .vs-separator {
+    @apply text-3xl font-black text-primary text-center animate-pulse;
+  }
+  
+  .status-alive {
+    @apply text-green-400 font-semibold;
+  }
+  
+  .status-dead {
+    @apply text-red-400 font-semibold;
+  }
+  
+  .rank-badge {
+    @apply bg-gradient-to-r from-primary to-primary/80 text-primary-foreground font-bold px-4 py-2 rounded-full shadow-lg;
+  }
+}

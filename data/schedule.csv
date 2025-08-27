@@ -1,7 +1,0 @@
-stage_id,stage_name,match_id,team_a,team_b,match_time_iso,winner_team
-1,Lower Finals,LF-1-P,TALON,RRQ,2025-08-30T12:00:00Z,
-1,Grand Final,GF-P,PRX,LF-1-P-W,2025-08-31T15:00:00Z,
-1,Upper Finals,UF-1-E,BBL,Team Liquid,2025-08-29T18:00:00Z,
-1,Lower Decider,LD-1-E,GiantX,NAVI,2025-08-28T21:00:00Z,
-1,Upper Finals,UF-1-A,Sentinels,G2,2025-08-29T00:00:00Z,
-1,Lower Decider,LD-1-A,NRG,Cloud9,2025-08-30T03:00:00Z,
