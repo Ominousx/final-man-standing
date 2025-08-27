@@ -1,8 +1,12 @@
 import os
 import hashlib
 import random
+import re
+import base64
+import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 import streamlit as st
@@ -12,16 +16,15 @@ from zoneinfo import ZoneInfo
 st.set_page_config(page_title="VCT Random-Fixture Survivor", page_icon="🎯", layout="wide")
 
 # ============================== Constants ==============================
-ADMIN_KEY_ENV = "VLMS_ADMIN_KEY"   # optional: set to enable Admin in-app
-LOCK_MINUTES_BEFORE = 5            # picks lock X minutes before match start
+ADMIN_KEY_ENV = "VLMS_ADMIN_KEY"
+LOCK_MINUTES_BEFORE = 5
 LOCAL_TZ = ZoneInfo("Asia/Kolkata")
 
-# Required CSV schemas
 REQ_SCHEDULE_COLS = {"stage_id","stage_name","match_id","team_a","team_b","match_time_iso","winner_team"}
 REQ_PICKS_COLS    = {"user","stage_id","match_id","pick_team","pick_time_iso"}
 REQ_ASSIGN_COLS   = {"user","stage_id","match_id","assigned_time_iso"}
 
-# ============================== Writable Data Dir ==============================
+# ============================== Data Directory ==============================
 def get_writable_data_dir():
     override = os.getenv("FMS_DATA_DIR")
     if override:
@@ -36,40 +39,35 @@ def get_writable_data_dir():
     p = Path("/tmp/fms_data"); p.mkdir(parents=True, exist_ok=True); return p
 
 DATA_DIR = get_writable_data_dir()
-SCHEDULE_CSV = DATA_DIR / "schedule.csv"       # stage_id,stage_name,match_id,team_a,team_b,match_time_iso,winner_team
-PICKS_CSV    = DATA_DIR / "picks.csv"          # user,stage_id,match_id,pick_team,pick_time_iso
-ASSIGN_CSV   = DATA_DIR / "assignments.csv"    # user,stage_id,match_id,assigned_time_iso
+SCHEDULE_CSV = DATA_DIR / "schedule.csv"
+PICKS_CSV    = DATA_DIR / "picks.csv"
+ASSIGN_CSV   = DATA_DIR / "assignments.csv"
 
-# ============================== Material Symbols (kept for header) ==============================
-def inject_icons_css():
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400,0,0');
-    .ms { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal;
-         font-size: 18px; display:inline-block; line-height: 0; vertical-align: -4px;
-         -webkit-font-feature-settings: 'liga'; -webkit-font-smoothing: antialiased; }
-    .ms-accent { color: var(--accent, #7C3AED); }
-    .main-header {
-      display:flex; align-items:center; justify-content:space-between;
-      padding: 10px 14px; border-radius: 14px;
-      background: linear-gradient(120deg, rgba(124,58,237,.18), rgba(6,182,212,.14));
-      border: 1px solid rgba(255,255,255,.10); margin-bottom: 10px;
-    }
-    .header-title { display:flex; align-items:center; gap:10px; font-size: 24px; font-weight: 800; }
-    .user-section { display:flex; flex-direction:column; align-items:flex-end; }
-    </style>
-    """, unsafe_allow_html=True)
+# ============================== Riot ID Validation ==============================
+def validate_riot_id_format(riot_id):
+    if not riot_id or '#' not in riot_id:
+        return False
+    
+    try:
+        game_name, tag_line = riot_id.split('#')
+        if not (3 <= len(game_name) <= 16):
+            return False
+        if not re.match(r'^[a-zA-Z0-9\s]+$', game_name):
+            return False
+        if not (3 <= len(tag_line) <= 5):
+            return False
+        if not re.match(r'^[a-zA-Z0-9]+$', tag_line):
+            return False
+        return True
+    except:
+        return False
 
-def ms(name: str, size: int = 18, cls: str = "") -> str:
-    style = f"font-size:{size}px" if size != 18 else ""
-    klass = "ms" + (f" {cls}" if cls else "")
-    return f'<span class="{klass}" style="{style}">{name}</span>'
-
-# ============================== Premium styling ==============================
+# ============================== Styling ==============================
 def inject_premium_css():
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400,0,0');
     
     :root {
         --bg: #0a0a0a;
@@ -79,7 +77,6 @@ def inject_premium_css():
         --text-muted: #cccccc;
         --accent: #c8bf9b;
         --accent-glow: #d4ccb0;
-        --accent-dark: #a89f7e;
         --border: #333333;
         --hover: #2a2a2a;
         --shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
@@ -87,87 +84,60 @@ def inject_premium_css():
         --gradient: linear-gradient(135deg, #c8bf9b 0%, #d4ccb0 100%);
     }
     
-    /* Global Styles */
     .stApp {
         background: var(--bg);
         color: var(--text);
         font-family: 'Poppins', sans-serif;
-        overflow-x: hidden;
     }
     
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
+    .ms { 
+        font-family: 'Material Symbols Outlined'; 
+        font-weight: normal; 
+        font-style: normal;
+        font-size: 18px; 
+        display:inline-block; 
+        line-height: 0; 
+        vertical-align: -4px;
     }
     
-    ::-webkit-scrollbar-track {
-        background: var(--panel-dark);
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: var(--accent);
-        border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: var(--accent-glow);
-    }
-    
-    /* Header Styling */
     .main-header {
         background: linear-gradient(135deg, var(--panel) 0%, var(--panel-dark) 100%);
         border-bottom: 2px solid var(--accent);
         box-shadow: var(--shadow);
-        padding: 20px 0;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .main-header::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: var(--gradient);
-        animation: shimmer 3s ease-in-out infinite;
+        padding: 15px 20px;
+        margin: 0 10px 20px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
     
     .header-title {
         font-family: 'Poppins', sans-serif;
-        font-size: 2.5rem;
+        font-size: 2.2rem;
         font-weight: 800;
         color: var(--text);
         text-shadow: 0 0 20px rgba(200, 191, 155, 0.5);
-        letter-spacing: 1px;
         display: flex;
         align-items: center;
         gap: 15px;
-        justify-content: center;
-    }
-    
-    .header-title img {
-        filter: drop-shadow(0 0 10px var(--accent));
-        animation: pulse 2s ease-in-out infinite;
-        width: 45px;
-        height: 45px;
-        object-fit: contain;
-        margin-right: 5px;
+        flex: 1;
     }
     
     .user-section {
         background: rgba(200, 191, 155, 0.1);
         border: 1px solid var(--accent);
-        border-radius: 25px;
-        padding: 12px 25px;
-        color: var(--text);
+        border-radius: 20px;
+        padding: 8px 16px;
         font-weight: 600;
         backdrop-filter: blur(10px);
         box-shadow: var(--shadow-glow);
+        white-space: nowrap;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
-    /* Game Card Styling */
     .game-card {
         background: linear-gradient(145deg, var(--panel) 0%, var(--panel-dark) 100%);
         border: 2px solid var(--border);
@@ -175,334 +145,80 @@ def inject_premium_css():
         padding: 20px;
         margin: 15px 0;
         box-shadow: var(--shadow);
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
     }
     
-    .game-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(200, 191, 155, 0.1), transparent);
-        transition: left 0.5s ease;
-    }
-    
-    .game-card:hover::before {
-        left: 100%;
-    }
-    
-    .game-card:hover {
-        border-color: var(--accent);
-        box-shadow: var(--shadow-glow);
-        transform: translateY(-5px);
-    }
-    
-    .game-card h3 {
-        color: var(--accent);
-        font-family: 'Poppins', sans-serif;
-        font-size: 1.4rem;
-        font-weight: 700;
-        text-shadow: 0 0 10px rgba(200, 191, 155, 0.3);
-        margin-bottom: 15px;
-        text-align: center;
-    }
-    
-    /* Team Logo Styling */
     .team-logo-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 20px;
-        margin: 20px 0;
-    }
-    
-    .team-logo {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        border: 3px solid var(--accent);
-        box-shadow: var(--shadow-glow);
-        transition: all 0.3s ease;
-        background: var(--panel-dark);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        color: var(--text);
-        font-size: 1.2rem;
-    }
-    
-    .team-logo:hover {
-        transform: scale(1.1);
-        box-shadow: 0 0 30px var(--accent);
-    }
-    
-    /* Team logo image styling */
-    .team-logo-container img {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        border: 3px solid var(--accent);
-        box-shadow: var(--shadow-glow);
-        transition: all 0.3s ease;
-        object-fit: cover;
-        background: var(--panel-dark);
-    }
-    
-    .team-logo-container img:hover {
-        transform: scale(1.1);
-        box-shadow: 0 0 30px var(--accent);
-        border-color: var(--accent-glow);
-    }
-    
-    .vs-separator {
-        font-family: 'Poppins', sans-serif;
-        font-size: 2rem;
-        font-weight: 800;
-        color: var(--accent);
-        text-shadow: 0 0 15px rgba(200, 191, 155, 0.5);
-        animation: pulse 2s ease-in-out infinite;
-    }
-    
-    /* Match Info Styling */
-    .match-info {
-        background: rgba(200, 191, 155, 0.05);
-        border: 1px solid var(--accent);
-        border-radius: 15px;
-        padding: 15px;
-        margin: 15px 0;
         text-align: center;
+        margin: 10px 0;
     }
     
-    .match-time {
-        color: var(--accent);
-        font-family: 'Poppins', sans-serif;
-        font-weight: 500;
-        font-size: 1.1rem;
-        margin-bottom: 10px;
-    }
-    
-    .match-status {
-        color: var(--text-muted);
-        font-weight: 500;
-    }
-    
-    /* Pick Form Styling */
-    .pick-form-container {
-        background: var(--panel-dark);
-        border: 2px solid var(--border);
-        border-radius: 15px;
-        padding: 20px;
-        margin: 20px 0;
-        text-align: center;
-    }
-    
-    .pick-form-container h4 {
-        color: var(--accent);
-        font-family: 'Poppins', sans-serif;
-        font-weight: 700;
-        margin-bottom: 15px;
-        text-shadow: 0 0 10px rgba(200, 191, 155, 0.3);
-    }
-    
-    /* Leaderboard Styling */
     .leaderboard-container {
         background: var(--panel);
-        border: 2px solid var(--border);
-        border-radius: 20px;
-        padding: 25px;
-        margin: 20px 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        margin: 5px 0;
         box-shadow: var(--shadow);
-    }
-    
-    .leaderboard-container h3 {
-        color: var(--accent);
-        font-family: 'Poppins', sans-serif;
-        font-weight: 700;
-        text-align: center;
-        margin-bottom: 25px;
-        text-shadow: 0 0 15px rgba(200, 191, 155, 0.3);
-        font-size: 1.8rem;
+        min-height: 400px;
+        overflow-y: auto;
     }
     
     .leaderboard-row {
         background: var(--panel-dark);
         border: 1px solid var(--border);
-        border-radius: 15px;
-        padding: 15px 20px;
-        margin: 10px 0;
+        border-radius: 8px;
+        padding: 12px 15px;
+        margin: 8px 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
         transition: all 0.3s ease;
-        animation: slideInLeft 0.6s ease-out;
-    }
-    
-    .leaderboard-row:hover {
-        border-color: var(--accent);
-        background: var(--hover);
-        transform: translateX(10px);
-        box-shadow: var(--shadow-glow);
+        min-height: 45px;
     }
     
     .rank-badge {
         background: var(--gradient);
         color: var(--bg);
         font-weight: 700;
-        padding: 8px 15px;
-        border-radius: 20px;
+        padding: 3px 8px;
+        border-radius: 10px;
         font-family: 'Poppins', sans-serif;
-        box-shadow: var(--shadow-glow);
+        font-size: 11px;
+        min-width: 20px;
+        text-align: center;
     }
     
     .status-alive {
         color: #00ff88;
         font-weight: 600;
-        text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        font-size: 10px;
     }
     
     .status-dead {
         color: #ff4444;
         font-weight: 600;
-        text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+        font-size: 10px;
     }
     
-    /* Stats Styling */
-    .stat-card {
-        background: linear-gradient(145deg, var(--panel) 0%, var(--panel-dark) 100%);
-        border: 2px solid var(--border);
-        border-radius: 20px;
-        padding: 25px;
-        margin: 20px 0;
-        text-align: center;
-        box-shadow: var(--shadow);
-        transition: all 0.3s ease;
-        animation: fadeInUp 0.8s ease-out;
-    }
-    
-    .stat-card:hover {
-        border-color: var(--accent);
-        transform: translateY(-5px);
-        box-shadow: var(--shadow-glow);
-    }
-    
-    .stat-value {
-        font-family: 'Poppins', sans-serif;
-        font-size: 3rem;
-        font-weight: 800;
-        color: var(--accent);
-        text-shadow: 0 0 20px rgba(200, 191, 155, 0.5);
-        margin-bottom: 10px;
-    }
-    
-    .stat-label {
-        color: var(--text-muted);
-        font-size: 1.2rem;
-        font-weight: 400;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-family: 'Poppins', sans-serif;
-    }
-    
-    /* Navigation Styling */
-    .stSidebar {
-        background: var(--panel-dark);
-        border-right: 2px solid var(--accent);
-    }
-    
-    .stSidebar .sidebar-content {
-        padding: 20px 0;
-    }
-    
-    .stSidebar > div {
-        background: var(--panel-dark);
-    }
-    
-    .sidebar-nav {
-        padding: 20px;
-    }
-    
-    .nav-row {
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: 12px;
-        padding: 15px 20px;
-        margin: 8px 0;
-        color: var(--text);
+    .badge {
+        padding: 5px 12px;
+        border-radius: 15px;
         font-weight: 600;
-        font-size: 16px;
-        transition: all 0.3s ease;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        position: relative;
-        overflow: hidden;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
     
-    .nav-row::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(200, 191, 155, 0.1), transparent);
-        transition: left 0.5s ease;
-    }
-    
-    .nav-row:hover::before {
-        left: 100%;
-    }
-    
-    .nav-row:hover {
-        background: var(--hover);
-        border-color: var(--accent);
-        color: var(--accent);
-        transform: translateX(10px);
-        box-shadow: var(--shadow-glow);
-    }
-    
-    .nav-row.active {
-        background: var(--accent);
+    .badge.alive {
+        background: linear-gradient(135deg, #00ff88, #00cc66);
         color: var(--bg);
-        font-weight: 700;
-        box-shadow: var(--shadow-glow);
     }
     
-    .nav-row.active::before {
-        display: none;
+    .badge.dead {
+        background: linear-gradient(135deg, #ff4444, #cc3333);
+        color: var(--bg);
     }
     
-    .nav-label {
-        font-weight: 500;
-        font-size: 16px;
-        color: inherit;
-        user-select: none;
-        flex: 1;
-        font-family: 'Poppins', sans-serif;
-    }
-    
-    .nav-row img {
-        width: 23px;
-        height: 23px;
-        filter: brightness(0) invert(1);
-        transition: all 0.3s ease;
-    }
-    
-    .nav-row:hover img {
-        filter: brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(45deg);
-    }
-    
-    .nav-row.active img {
-        filter: brightness(0) invert(0);
-    }
-    
-    /* Button Styling */
     .stButton > button {
         background: var(--gradient);
         color: var(--bg);
@@ -512,11 +228,10 @@ def inject_premium_css():
         font-weight: 700;
         font-size: 16px;
         font-family: 'Poppins', sans-serif;
-        text-transform: uppercase;
-        letter-spacing: 1px;
         box-shadow: var(--shadow-glow);
         transition: all 0.3s ease;
-        cursor: pointer;
+        width: 100%;
+        min-height: 50px;
     }
     
     .stButton > button:hover {
@@ -524,230 +239,95 @@ def inject_premium_css():
         box-shadow: 0 10px 25px rgba(200, 191, 155, 0.4);
     }
     
-    .stButton > button:active {
-        transform: translateY(0);
-    }
-    
-    /* Form Elements */
-    .stSelectbox > div > div {
-        background: var(--panel-dark);
+    /* Login Page Specific Styles */
+    .login-container {
+        background: var(--panel);
         border: 2px solid var(--border);
-        border-radius: 12px;
-        color: var(--text);
-    }
-    
-    .stSelectbox > div > div:hover {
-        border-color: var(--accent);
-    }
-    
-    .stTextInput > div > div > input {
-        background: var(--panel-dark);
-        border: 2px solid var(--border);
-        border-radius: 12px;
-        color: var(--text);
-        font-family: 'Poppins', sans-serif;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: var(--accent);
-        box-shadow: var(--shadow-glow);
-    }
-    
-    /* Data Frame Styling */
-    .stDataFrame {
-        background: var(--panel-dark);
-        border: 2px solid var(--border);
-        border-radius: 15px;
-        overflow: hidden;
-    }
-    
-    /* Alert Styling */
-    .stAlert {
-        background: var(--panel-dark);
-        border: 2px solid var(--accent);
-        border-radius: 15px;
-        color: var(--text);
-    }
-    
-    /* Badge Styling */
-    .badge {
-        background: var(--gradient);
-        color: var(--bg);
-        padding: 5px 12px;
-        border-radius: 15px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        box-shadow: var(--shadow-glow);
-    }
-    
-    /* Metric Styling */
-    .stMetric {
-        background: var(--panel-dark);
-        border: 2px solid var(--border);
-        border-radius: 15px;
-        padding: 20px;
-        text-align: center;
-        margin: 15px 0;
-    }
-    
-    .stMetric > div > div > div {
-        color: var(--accent);
-        font-family: 'Poppins', sans-serif;
-        font-weight: 700;
-        font-size: 2rem;
-        text-shadow: 0 0 15px rgba(200, 191, 155, 0.3);
-    }
-    
-    .stMetric > div > div > div:last-child {
-        color: var(--text-muted);
-        font-size: 1rem;
-        font-weight: 400;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-family: 'Poppins', sans-serif;
-    }
-    
-    /* Success Message Styling */
-    .stSuccess {
-        background: rgba(0, 255, 136, 0.1);
-        border: 2px solid #00ff88;
-        border-radius: 15px;
-        color: #00ff88;
-        padding: 20px;
+        border-radius: 20px;
+        padding: 40px;
         margin: 20px 0;
-        text-align: center;
+        box-shadow: var(--shadow);
+        max-width: 500px;
+        margin: 20px auto;
+    }
+    
+    .google-signin-btn {
+        background: #ffffff;
+        color: #000000;
+        border: none;
+        border-radius: 25px;
+        padding: 15px 30px;
         font-weight: 600;
-        animation: fadeInUp 0.8s ease-out;
+        font-size: 16px;
+        font-family: 'Poppins', sans-serif;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        width: 100%;
+        min-height: 55px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 20px;
+        cursor: pointer;
     }
     
-    /* Animations */
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+    .google-signin-btn:hover {
+        background: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
     }
     
-    @keyframes slideInLeft {
-        from {
-            opacity: 0;
-            transform: translateX(-30px);
-        }
-        to {
-            opacity: 1;
-            transform: translateX(0);
-        }
+    .divider {
+        display: flex;
+        align-items: center;
+        margin: 25px 0;
+        text-align: center;
+        color: var(--text-muted);
     }
     
-    @keyframes pulse {
-        0%, 100% {
-            transform: scale(1);
-        }
-        50% {
-            transform: scale(1.05);
-        }
+    .divider::before,
+    .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--border);
     }
     
-    @keyframes shimmer {
-        0% {
-            transform: translateX(-100%);
-        }
-        100% {
-            transform: translateX(100%);
-        }
+    .divider span {
+        padding: 0 15px;
+        font-size: 14px;
     }
     
-    /* Responsive Design */
-    @media (max-width: 768px) {
-        .header-title {
-            font-size: 2rem;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .game-card {
-            padding: 20px;
-            margin: 15px 0;
-        }
-        
-        .team-logo {
-            width: 60px;
-            height: 60px;
-            font-size: 1rem;
-        }
-        
-        .vs-separator {
-            font-size: 1.5rem;
-        }
-        
-        .stat-value {
-            font-size: 2.5rem;
-        }
-    }
-    
-    /* Gaming-specific enhancements */
-    .stButton > button[data-testid="baseButton-secondary"] {
-        background: var(--panel-dark) !important;
-        color: var(--text) !important;
-        border: 2px solid var(--accent) !important;
-        border-radius: 25px !important;
-        font-weight: 500 !important;
-        font-family: 'Poppins', sans-serif !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stButton > button[data-testid="baseButton-secondary"]:hover {
-        background: var(--accent) !important;
+    .continue-btn {
+        background: var(--gradient) !important;
         color: var(--bg) !important;
-        transform: translateY(-2px) !important;
+        border: none !important;
+        border-radius: 25px !important;
+        padding: 15px 30px !important;
+        font-weight: 700 !important;
+        font-size: 18px !important;
+        font-family: 'Poppins', sans-serif !important;
         box-shadow: var(--shadow-glow) !important;
+        transition: all 0.3s ease !important;
+        width: 100% !important;
+        min-height: 55px !important;
+        margin-top: 10px !important;
     }
     
-    /* Enhanced form styling */
-    .stTextInput > div > div > input::placeholder {
-        color: var(--text-muted) !important;
-        opacity: 0.7 !important;
+    .continue-btn:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 25px rgba(200, 191, 155, 0.4) !important;
     }
     
-    /* Success/Error message enhancements */
-    .stSuccess > div {
-        background: rgba(0, 255, 136, 0.1) !important;
-        border: 2px solid #00ff88 !important;
-        border-radius: 15px !important;
-        color: #00ff88 !important;
-        font-weight: 600 !important;
+    .continue-btn:disabled {
+        background: #666666 !important;
+        color: #999999 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+        box-shadow: none !important;
     }
     
-    .stError > div {
-        background: rgba(255, 68, 68, 0.1) !important;
-        border: 2px solid #ff4444 !important;
-        border-radius: 15px !important;
-        color: #ff4444 !important;
-        font-weight: 600 !important;
-    }
-    
-    /* Loading spinner enhancement */
-    .stSpinner > div {
-        border: 3px solid var(--panel-dark) !important;
-        border-top: 3px solid var(--accent) !important;
-        border-radius: 50% !important;
-        width: 40px !important;
-        height: 40px !important;
-        animation: spin 1s linear infinite !important;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    /* Hide Streamlit default elements */
     #MainMenu, footer, header { visibility: hidden; }
     </style>
     """, unsafe_allow_html=True)
@@ -755,23 +335,18 @@ def inject_premium_css():
 def badge(text, cls):
     return f'<span class="badge {cls}">{text}</span>'
 
-# ============================== Custom PNG Icons ==============================
-# Sidebar PNG icons live in icons/
+def ms(name: str, size: int = 18) -> str:
+    return f'<span class="ms" style="font-size:{size}px">{name}</span>'
 
-# Resolve ICON_DIR relative to this file; fallback to CWD if needed
+# ============================== Icons ==============================
 ICON_DIR = Path(__file__).parent / "icons"
 if not ICON_DIR.exists():
     ICON_DIR = Path.cwd() / "icons"
 
-import base64
-import mimetypes
-from typing import Optional
-
 def _data_uri_for_icon(path_or_name: str) -> Optional[str]:
-    """Return a data: URI for an image in ICON_DIR (or absolute path)."""
     p = Path(path_or_name)
     if not p.exists():
-        p = ICON_DIR / path_or_name  # try inside ICON_DIR
+        p = ICON_DIR / path_or_name
     if not p.exists():
         return None
 
@@ -781,286 +356,260 @@ def _data_uri_for_icon(path_or_name: str) -> Optional[str]:
 
     try:
         data = p.read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:{mime};base64,{b64}"
     except Exception:
         return None
 
-    b64 = base64.b64encode(data).decode("ascii")
-    return f"data:{mime};base64,{b64}"
-
 def icon_html(path_or_name: str, size: int = 18) -> str:
-    """
-    Render an <img> tag for a sidebar icon using a data: URI.
-    `path_or_name` can be a filename in ICON_DIR (e.g., 'home.png')
-    or an absolute/relative path.
-    """
     uri = _data_uri_for_icon(path_or_name)
     if not uri:
-        # graceful fallback: small rounded placeholder block
-        return (
-            f'<span style="display:inline-block;width:{size}px;height:{size}px;'
-            'background:rgba(255,255,255,.08);border-radius:4px;"></span>'
-        )
-    return (
-        f'<img class="nav-icon" src="{uri}" '
-        f'style="width:{size}px;height:{size}px;object-fit:contain;vertical-align:-3px;" />'
-    )
+        return f'<span style="display:inline-block;width:{size}px;height:{size}px;background:rgba(255,255,255,.08);border-radius:4px;"></span>'
+    return f'<img src="{uri}" style="width:{size}px;height:{size}px;object-fit:contain;vertical-align:-3px;" />'
 
 # ============================== Team Logos ==============================
 def get_team_logo_placeholder(team_name):
-    """Enhanced colored block fallback when a real logo isn't found."""
-    colors = {
-        "GEN": "#c8bf9b", "GEN.G": "#c8bf9b",
-        "FPX": "#d4ccb0", "FNC": "#a89f7e",
-        "TL": "#b8af8a", "DRX": "#c8bf9b",
-        "PRX": "#d4ccb0", "T1": "#a89f7e",
-        "EDG": "#b8af8a", "LOUD": "#c8bf9b",
-        "NRG": "#d4ccb0", "SEN": "#a89f7e",
-        "100T": "#b8af8a", "LEV": "#c8bf9b",
-        "NAVI": "#d4ccb0", "VIT": "#a89f7e",
-        "TH": "#b8af8a", "KC": "#c8bf9b"
-    }
-    # Special handling for TBD/placeholder cases
+    colors = {"PRX": "#d4ccb0", "TALON": "#c8bf9b", "RRQ": "#a89f7e", "BBL": "#b8af8a", "Team Liquid": "#c8bf9b", "GiantX": "#d4ccb0", "NAVI": "#a89f7e", "Sentinels": "#b8af8a", "G2": "#c8bf9b"}
+    
     if team_name in ["TBD", "TBA", "—"]:
         display_text = "TBD"
-        color = "#6b7280"  # Gray for placeholder
+        color = "#6b7280"
     else:
         display_text = (team_name or '')[:3].upper()
-        color = colors.get((team_name or "").upper(), "#c8bf9b")
+        color = colors.get(team_name, "#c8bf9b")
     
     return f"""
-    <div style="width:90px;height:90px;background:linear-gradient(145deg, {color}, {colors.get((team_name or "").upper(), '#a89f7e') if team_name not in ["TBD", "TBA", "—"] else '#9ca3af'});border-radius:50%;display:flex;
-                align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#0a0a0a;
-                margin:0 auto 8px;box-shadow:0 0 20px rgba(200, 191, 155, 0.3);
-                border:3px solid #c8bf9b;transition:all 0.3s ease;
-                cursor:pointer;position:relative;overflow:hidden;animation:fadeInUp 0.8s ease-out;">
-        <div style="position:absolute;top:0;left:-100%;width:100%;height:100%;
-                    background:linear-gradient(90deg,transparent,rgba(200, 191, 155, 0.3),transparent);
-                    transition:left 0.6s ease;"></div>
-        <span style="position:relative;z-index:1;text-shadow:0 0 10px rgba(200, 191, 155, 0.5);font-family: 'Poppins', sans-serif;font-weight:700;">{display_text}</span>
+    <div style="width:80px;height:80px;background:{color};border-radius:50%;display:flex;
+                align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#0a0a0a;
+                margin:0 auto;border:3px solid #c8bf9b;">
+        <span>{display_text}</span>
     </div>
     """
 
 def team_logo_html(team_name: str):
-    """Try local /logos/<TEAM>.(png|svg|jpg|jpeg|webp) else fallback."""
     t = (team_name or "").strip()
-    if not t:
-        return get_team_logo_placeholder("—")
+    if not t or any(placeholder in t for placeholder in ["-W", "-L", "TBD", "TBA"]):
+        return get_team_logo_placeholder(t or "TBD")
     
-    # Skip placeholder team names that aren't actual teams
-    if any(placeholder in t for placeholder in ["-W", "-L", "TBD", "TBA"]):
-        return get_team_logo_placeholder("TBD")
+    if not os.path.exists("logos"):
+        return get_team_logo_placeholder(t)
     
-    # Team name mapping for logo files
-    team_mapping = {
-        "PRX": "Paper Rex",
-        "TALON": "TALON",
-        "RRQ": "RRQ", 
-        "BBL": "BBL",
-        "Team Liquid": "Team Liquid",
-        "GiantX": "GiantX",
-        "NAVI": "NAVI",
-        "Sentinels": "Sentinels",
-        "G2": "G2",
-        "NRG": "NRG",
-        "Cloud9": "Cloud9"
+    exact_matches = {
+        "BBL": "BBL.png", "Team Liquid": "Team Liquid.png", "Paper Rex": "Paper Rex.png",
+        "PRX": "Paper Rex.png", "TALON": "TALON.png", "RRQ": "RRQ.png",
+        "GiantX": "GiantX.png", "NAVI": "NAVI.png", "Sentinels": "Sentinels.png",
+        "G2": "G2.png", "NRG": "NRG.png", "Cloud9": "Cloud9.png"
     }
     
-    # Get the mapped team name
-    mapped_name = team_mapping.get(t, t)
+    logo_path = None
+    if t in exact_matches and os.path.exists(f"logos/{exact_matches[t]}"):
+        logo_path = f"logos/{exact_matches[t]}"
     
-    # Try multiple possible logo directories
-    logo_dirs = [
-        Path("logos"),
-        Path(__file__).parent / "logos",
-        Path.cwd() / "logos"
-    ]
-    
-    for logo_dir in logo_dirs:
-        if logo_dir.exists():
-            # Try exact match first with mapped name
-            base = logo_dir / f"{mapped_name}"
-            for ext in (".png", ".svg", ".jpg", ".jpeg", ".webp"):
-                p = base.with_suffix(ext)
-                if p.exists():
-                    try:
-                        # Use relative path for Streamlit
-                        relative_path = p.relative_to(Path.cwd())
-                        return f"""
-                        <div class="team-logo-container">
-                            <img src="{relative_path}" style="max-width:80px;max-height:80px;border-radius:50%;border:3px solid var(--accent);box-shadow: var(--shadow-glow);"/>
-                        </div>
-                        """
-                    except Exception:
-                        continue
-            
-            # Try case-insensitive match as fallback
-            for logo_file in logo_dir.iterdir():
-                if logo_file.is_file() and logo_file.suffix.lower() in ['.png', '.svg', '.jpg', '.jpeg', '.webp']:
-                    logo_name = logo_file.stem
-                    if t.lower() in logo_name.lower() or logo_name.lower() in t.lower():
-                        try:
-                            relative_path = logo_file.relative_to(Path.cwd())
-                            return f"""
-                            <div class="team-logo-container">
-                                <img src="{relative_path}" style="max-width:80px;max-height:80px;border-radius:50%;border:3px solid var(--accent);box-shadow: var(--shadow-glow);"/>
-                            </div>
-                            """
-                        except Exception:
-                            continue
+    if logo_path:
+        try:
+            with open(logo_path, "rb") as img_file:
+                img_data = base64.b64encode(img_file.read()).decode()
+                return f'<div class="team-logo-container"><img src="data:image/png;base64,{img_data}" style="width:80px;height:80px;border-radius:50%;border:3px solid #c8bf9b;object-fit:cover;" alt="{t}"/></div>'
+        except Exception:
+            pass
     
     return get_team_logo_placeholder(t)
 
-# ============================== Auth / Session ==============================
+# ============================== Authentication ==============================
 def init_session_state():
     if 'authenticated' not in st.session_state: st.session_state.authenticated = False
-    if 'user_email' not in st.session_state:   st.session_state.user_email = None
-    if 'user_name' not in st.session_state:    st.session_state.user_name = None
+    if 'user_email' not in st.session_state: st.session_state.user_email = None
+    if 'user_name' not in st.session_state: st.session_state.user_name = None
+    if 'riot_id' not in st.session_state: st.session_state.riot_id = None
     if 'current_page' not in st.session_state: st.session_state.current_page = "Home"
-    if 'show_google_signin' not in st.session_state: st.session_state.show_google_signin = False
 
 def show_initial_login():
+    inject_premium_css()
+    
     st.markdown("""
     <style>
-    .stApp { background:#0a0a0a; } #MainMenu, footer, header{visibility:hidden;}
-    .login-container{ max-width:400px; margin:100px auto; padding:40px; background:#1a1a1a; border-radius:20px; box-shadow:0 0 30px rgba(200, 191, 155, 0.2); border:2px solid #c8bf9b;}
-    .app-title{ font-size:28px; font-weight:900; color:#c8bf9b; margin-bottom:8px; font-family: 'Poppins', sans-serif; text-align:center; text-shadow:0 0 15px rgba(200, 191, 155, 0.5);}
-    .app-subtitle{ font-size:16px; color:#cccccc; text-align:center; font-weight:500; }
-    .form-title{ font-size:22px; font-weight:700; text-align:center; margin-bottom:8px; color:#ffffff; font-family: 'Poppins', sans-serif;}
-    .form-subtitle{ font-size:16px; color:#cccccc; text-align:center; margin-bottom:24px; font-weight:400;}
-    .divider{ text-align:center; margin:24px 0; color:#c8bf9b; font-size:16px; font-weight:600;}
-    .terms-text{ text-align:center; font-size:14px; color:#cccccc; margin-top:24px; line-height:18px;}
-    .terms-text a{ color:#c8bf9b; text-decoration:none; font-weight:600;}
+    .stApp { background:#0a0a0a; }
+    .app-title{ 
+        font-size: 36px; 
+        font-weight: 900; 
+        color: #c8bf9b; 
+        margin-bottom: 12px; 
+        font-family: 'Poppins', sans-serif; 
+        text-align: center;
+        text-shadow: 0 0 20px rgba(200, 191, 155, 0.5);
+    }
+    .form-title{ 
+        font-size: 22px; 
+        font-weight: 600; 
+        text-align: center; 
+        margin-bottom: 25px; 
+        color: #ffffff; 
+        font-family: 'Poppins', sans-serif;
+    }
+    .caution-box{ 
+        background: rgba(255, 68, 68, 0.1); 
+        border: 2px solid #ff4444; 
+        border-radius: 12px; 
+        padding: 20px; 
+        margin: 25px 0; 
+        text-align: center;
+    }
+    .caution-title{ 
+        color: #ff4444; 
+        font-weight: 700; 
+        font-size: 18px; 
+        margin-bottom: 10px;
+    }
+    .caution-text{ 
+        color: #ffaaaa; 
+        font-size: 14px; 
+        line-height: 1.6;
+    }
+    /* Override Streamlit button styling for Continue button */
+    .stButton > button {
+        background: var(--gradient) !important;
+        color: var(--bg) !important;
+        border: none !important;
+        border-radius: 25px !important;
+        padding: 15px 30px !important;
+        font-weight: 700 !important;
+        font-size: 18px !important;
+        font-family: 'Poppins', sans-serif !important;
+        box-shadow: var(--shadow-glow) !important;
+        transition: all 0.3s ease !important;
+        width: 100% !important;
+        min-height: 55px !important;
+        margin-top: 15px !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 25px rgba(200, 191, 155, 0.4) !important;
+    }
+    
+    .stButton > button:disabled {
+        background: #666666 !important;
+        color: #999999 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Specific styling for enabled continue button */
+    .stButton > button:not(:disabled) {
+        background: var(--gradient) !important;
+        color: var(--bg) !important;
+        opacity: 1 !important;
+        cursor: pointer !important;
+    }
+    
+    /* Force visibility for continue button */
+    div[data-testid="column"] .stButton > button {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.markdown('<div class="app-title">VCT SURVIVOR</div>', unsafe_allow_html=True)
+        st.markdown('<div class="form-title">Join the Competition</div>', unsafe_allow_html=True)
+        
         st.markdown("""
-        <div class="app-title">VCT SURVIVOR</div>
-        <div class="app-subtitle">Official Tournament Prediction Platform</div>
+        <div class="caution-box">
+            <div class="caution-title">⚠️ IMPORTANT</div>
+            <div class="caution-text">
+                Enter your Riot ID carefully as changes won't be allowed later.<br>
+                This will be used to gift the bundle when you win.
+            </div>
+        </div>
         """, unsafe_allow_html=True)
-
-        st.markdown('<div class="form-title">Create an account</div><div class="form-subtitle">Enter your email to sign up for this app</div>', unsafe_allow_html=True)
-        email = st.text_input("Email", placeholder="email@domain.com", key="initial_email", label_visibility="collapsed")
-
-        if st.button("Continue", use_container_width=True, type="primary"):
-            if email and '@' in email:
+        
+        riot_id = st.text_input("Riot ID", placeholder="GameName#TAG", label_visibility="collapsed", key="riot_id_input")
+        confirm = st.checkbox("I confirm my Riot ID is correct", key="confirm_riot_id")
+        
+        # Custom continue button with proper styling
+        continue_clicked = st.button("Continue", disabled=not (confirm and riot_id), key="continue_btn", use_container_width=True)
+        
+        if continue_clicked:
+            if riot_id and validate_riot_id_format(riot_id):
                 st.session_state.authenticated = True
-                st.session_state.user_email = email
-                st.session_state.user_name = email.split('@')[0]
-                st.success("✓ Account created successfully"); st.balloons(); st.rerun()
+                st.session_state.user_name = riot_id.split('#')[0]
+                st.session_state.riot_id = riot_id
+                st.success("Account created successfully!")
+                st.rerun()
             else:
-                st.error("Please enter a valid email address")
-
-        st.markdown('<div class="divider">or</div>', unsafe_allow_html=True)
-
-        if st.button("Continue with Google", use_container_width=True):
-            st.session_state.show_google_signin = True; st.rerun()
-
+                st.error("Invalid Riot ID format. Please use format: GameName#TAG")
+        
+        # Divider
+        st.markdown('<div class="divider"><span>or</span></div>', unsafe_allow_html=True)
+        
+        # Mock Google Sign-in Button
         st.markdown("""
-        <div class="terms-text">By clicking continue, you agree to our<br>
-        <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></div>
+        <div class="google-signin-btn" onclick="alert('Google Sign-in not implemented in demo')">
+            <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Continue with Google
+        </div>
         """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
-def show_google_signin():
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        st.image("https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png", width=150)
-        st.markdown("<div style='text-align:center;font-size:28px;margin:8px 0;color:#c8bf9b;font-family: Poppins, sans-serif;font-weight:700;text-shadow:0 0 15px rgba(200, 191, 155, 0.5);'>Sign in</div><div style='text-align:center;color:#cccccc;font-size:16px;font-weight:500;'>Continue to VCT Survivor</div>", unsafe_allow_html=True)
-        email = st.text_input("Email or phone", placeholder="Enter your email", key="google_email", label_visibility="collapsed")
-        col_left, col_right = st.columns([1, 1])
-        with col_left:
-            if st.button("Back"):
-                st.session_state.show_google_signin = False; st.rerun()
-        with col_right:
-            if st.button("Next", use_container_width=True, type="primary"):
-                if email and '@' in email:
-                    st.session_state.authenticated = True
-                    st.session_state.user_email = email
-                    st.session_state.user_name = email.split('@')[0]
-                    st.session_state.show_google_signin = False
-                    st.success("✓ Signed in successfully"); st.balloons(); st.rerun()
-                else:
-                    st.error("Please enter a valid email address")
-
-# ============================== Data Utils ==============================
+# ============================== Data Functions ==============================
 def ensure_files():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not SCHEDULE_CSV.exists(): pd.DataFrame(columns=sorted(REQ_SCHEDULE_COLS)).to_csv(SCHEDULE_CSV, index=False)
-    if not PICKS_CSV.exists():    pd.DataFrame(columns=sorted(REQ_PICKS_COLS)).to_csv(PICKS_CSV, index=False)
-    if not ASSIGN_CSV.exists():   pd.DataFrame(columns=sorted(REQ_ASSIGN_COLS)).to_csv(ASSIGN_CSV, index=False)
-
-def _read_csv(path: Path, required: set[str]):
-    if not path.exists(): 
-        return pd.DataFrame(columns=sorted(required))
-    try:
-        df = pd.read_csv(path, dtype=str).fillna("")
-        # Validate that all required columns exist
-        missing = required - set(df.columns)
-        if missing:
-            st.error(f"`{path.name}` is missing columns: {', '.join(sorted(missing))}")
-            return pd.DataFrame(columns=sorted(required))
-        return df
-    except pd.errors.EmptyDataError:
-        st.warning(f"`{path.name}` is empty, creating new file")
-        return pd.DataFrame(columns=sorted(required))
-    except pd.errors.ParserError as e:
-        st.error(f"Failed to parse `{path.name}`: {e}")
-        return pd.DataFrame(columns=sorted(required))
-    except Exception as e:
-        st.error(f"Failed to read `{path.name}`: {e}")
-        return pd.DataFrame(columns=sorted(required))
+    if not PICKS_CSV.exists(): pd.DataFrame(columns=sorted(REQ_PICKS_COLS)).to_csv(PICKS_CSV, index=False)
+    if not ASSIGN_CSV.exists(): pd.DataFrame(columns=sorted(REQ_ASSIGN_COLS)).to_csv(ASSIGN_CSV, index=False)
 
 def load_schedule():
-    df = _read_csv(SCHEDULE_CSV, REQ_SCHEDULE_COLS)
-    if df.empty: 
-        df["stage_id"] = pd.Series(dtype="Int64")
-    else:        
+    try:
+        df = pd.read_csv(SCHEDULE_CSV, dtype=str).fillna("")
         df["stage_id"] = pd.to_numeric(df["stage_id"], errors="coerce").fillna(0).astype("Int64")
-    return df.sort_values(["stage_id", "match_time_iso"])
+        return df.sort_values(["stage_id", "match_time_iso"])
+    except:
+        return pd.DataFrame(columns=sorted(REQ_SCHEDULE_COLS))
 
 def load_picks():
-    df = _read_csv(PICKS_CSV, REQ_PICKS_COLS)
-    if df.empty: 
-        df["stage_id"] = pd.Series(dtype="Int64")
-    else:        
+    try:
+        df = pd.read_csv(PICKS_CSV, dtype=str).fillna("")
         df["stage_id"] = pd.to_numeric(df["stage_id"], errors="coerce").fillna(0).astype("Int64")
-    return df
+        return df
+    except:
+        return pd.DataFrame(columns=sorted(REQ_PICKS_COLS))
 
 def load_assignments():
-    df = _read_csv(ASSIGN_CSV, REQ_ASSIGN_COLS)
-    if df.empty: 
-        df["stage_id"] = pd.Series(dtype="Int64")
-    else:        
+    try:
+        df = pd.read_csv(ASSIGN_CSV, dtype=str).fillna("")
         df["stage_id"] = pd.to_numeric(df["stage_id"], errors="coerce").fillna(0).astype("Int64")
-    return df
+        return df
+    except:
+        return pd.DataFrame(columns=sorted(REQ_ASSIGN_COLS))
 
 def save_picks(df): df.to_csv(PICKS_CSV, index=False)
 def save_assign(df): df.to_csv(ASSIGN_CSV, index=False)
-
 def now_utc(): return datetime.now(timezone.utc)
 
-# ============================== Time Helpers ==============================
 def fmt_local(dt_iso: str, fmt: str = "%b %d, %Y • %I:%M %p"):
     dt = pd.to_datetime(dt_iso, utc=True, errors="coerce")
     if pd.isna(dt): return "—"
     return dt.tz_convert(LOCAL_TZ).strftime(fmt)
 
-def fmt_utc(dt_iso: str, fmt: str = "%Y-%m-%d %H:%M UTC"):
-    dt = pd.to_datetime(dt_iso, utc=True, errors="coerce")
-    if pd.isna(dt): return "—"
-    return dt.strftime(fmt)
-
 def countdown_to(dt_iso: str):
     try:
         dt = pd.to_datetime(dt_iso, utc=True, errors="coerce")
         if pd.isna(dt): return "—"
-        # Ensure dt is timezone-aware
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         
-        now = now_utc()
-        secs = int((dt - now).total_seconds())
+        secs = int((dt - now_utc()).total_seconds())
         if secs <= 0: return "Starting"
         
         m, s = divmod(secs, 60)
@@ -1072,7 +621,7 @@ def countdown_to(dt_iso: str):
         if h or d: parts.append(f"{h}h")
         parts.append(f"{m}m")
         return " ".join(parts)
-    except Exception:
+    except:
         return "—"
 
 # ============================== Game Logic ==============================
@@ -1100,14 +649,13 @@ def active_stage(schedule_df: pd.DataFrame):
     name = name_series.iloc[0] if not name_series.empty else f"Stage {sid}"
     return {"stage_id": sid, "stage_name": name}
 
-def lock_deadline(schedule_df, match_id, minutes_before=LOCK_MINUTES_BEFORE):
+def can_pick(schedule_df, match_id):
     row = schedule_df[schedule_df["match_id"]==match_id]
-    if row.empty: return now_utc()
+    if row.empty: return False
     mdt = pd.to_datetime(row.iloc[0]["match_time_iso"], utc=True, errors="coerce")
-    if pd.isna(mdt): return now_utc()
-    return mdt - pd.Timedelta(minutes=minutes_before)
-
-def can_pick(schedule_df, match_id): return now_utc() < lock_deadline(schedule_df, match_id)
+    if pd.isna(mdt): return False
+    lock_time = mdt - pd.Timedelta(minutes=LOCK_MINUTES_BEFORE)
+    return now_utc() < lock_time
 
 def judge_results(schedule_df: pd.DataFrame, picks_df: pd.DataFrame):
     if picks_df.empty:
@@ -1125,36 +673,29 @@ def compute_leaderboard(results_df: pd.DataFrame):
         return pd.DataFrame(columns=["user","alive","wins","first_loss_stage"])
     
     try:
-        # Handle losses
-        losses = results_df[results_df["result"]=="Loss"].sort_values(["user","stage_id"])
-        first_loss = losses.groupby("user")["stage_id"].min().rename("first_loss_stage")
+        all_users = results_df["user"].unique()
+        losses = results_df[results_df["result"]=="Loss"]
+        first_loss = losses.groupby("user")["stage_id"].min().rename("first_loss_stage") if not losses.empty else pd.Series(name="first_loss_stage", dtype="Int64")
+        wins = results_df[results_df["result"]=="Win"].groupby("user")["stage_id"].count().rename("wins") if not results_df[results_df["result"]=="Win"].empty else pd.Series(name="wins", dtype="Int64")
         
-        # Handle wins
-        wins = (results_df[results_df["result"]=="Win"].groupby("user")["stage_id"].count().rename("wins"))
-        
-        # Create leaderboard
-        lb = pd.DataFrame(index=results_df["user"].unique()).join([wins, first_loss])
+        lb = pd.DataFrame({"user": all_users}).set_index("user")
+        lb = lb.join([wins, first_loss])
         lb["wins"] = lb["wins"].fillna(0).astype(int)
         lb["alive"] = lb["first_loss_stage"].isna()
         
-        # Sort by alive status (alive first) then by wins (descending)
-        return lb.reset_index().rename(columns={"index":"user"}).sort_values(by=["alive","wins"], ascending=[False,False])
-    
-    except Exception as e:
-        st.error(f"Error computing leaderboard: {e}")
+        return lb.reset_index().sort_values(by=["alive","wins","user"], ascending=[False,False,True])
+    except:
         return pd.DataFrame(columns=["user","alive","wins","first_loss_stage"])
 
 def get_or_make_assignment(user, stage_id, assignments_df, schedule_df):
-    # Input validation
     if not user or stage_id is None:
         return None, assignments_df
     
     try:
         stage_id = int(stage_id)
-    except (ValueError, TypeError):
+    except:
         return None, assignments_df
     
-    # Check existing assignment
     cur = assignments_df[(assignments_df["user"]==user) & (assignments_df["stage_id"]==stage_id)]
     pool = eligible_matches(schedule_df, stage_id)
     
@@ -1166,131 +707,61 @@ def get_or_make_assignment(user, stage_id, assignments_df, schedule_df):
         still_ok = pool[pool["match_id"]==mid]
         if not still_ok.empty:
             return mid, assignments_df
-        
-        # Reassign to a new match if current assignment is no longer valid
-        new_mid = deterministic_choice(pool["match_id"], user, stage_id, salt="fallback")
-        if new_mid:
-            assignments_df.loc[cur.index, ["match_id","assigned_time_iso"]] = [new_mid, now_utc().isoformat()]
-            return new_mid, assignments_df
 
-    # Create new assignment
     mid = deterministic_choice(pool["match_id"], user, stage_id)
     if mid:
-        new_row = {
-            "user": user, 
-            "stage_id": stage_id, 
-            "match_id": mid, 
-            "assigned_time_iso": now_utc().isoformat()
-        }
+        new_row = {"user": user, "stage_id": stage_id, "match_id": mid, "assigned_time_iso": now_utc().isoformat()}
         assignments_df = pd.concat([assignments_df, pd.DataFrame([new_row])], ignore_index=True)
         return mid, assignments_df
     
     return None, assignments_df
 
 def record_pick(picks_df, user, stage_id, match_id, pick_team):
-    # Input validation
-    if not user or not stage_id or not match_id or not pick_team:
+    if not all([user, stage_id, match_id, pick_team]):
         return picks_df, False, "Missing required fields."
     
-    try:
-        stage_id = int(stage_id)
-    except (ValueError, TypeError):
-        return picks_df, False, "Invalid stage ID."
-    
-    # Check if user already picked for this stage
     dup = picks_df[(picks_df["user"]==user) & (picks_df["stage_id"]==stage_id)]
     if not dup.empty: 
         return picks_df, False, "You already picked for this stage."
     
-    # Load schedule to validate match and teams
-    sched = load_schedule()
-    row = sched[sched["match_id"]==match_id]
-    if row.empty: 
-        return picks_df, False, "Match not found."
-    
-    ta, tb = row.iloc[0]["team_a"], row.iloc[0]["team_b"]
-    if pick_team not in {ta, tb}: 
-        return picks_df, False, "Invalid team selection."
-    
-    # Check if picks are locked
-    if not can_pick(sched, match_id):
-        return picks_df, False, "Picks are locked for this match."
-    
-    # Create new pick record
-    new_row = {
-        "user": user, 
-        "stage_id": stage_id, 
-        "match_id": match_id, 
-        "pick_team": pick_team, 
-        "pick_time_iso": now_utc().isoformat()
-    }
+    new_row = {"user": user, "stage_id": stage_id, "match_id": match_id, "pick_team": pick_team, "pick_time_iso": now_utc().isoformat()}
     picks_df = pd.concat([picks_df, pd.DataFrame([new_row])], ignore_index=True)
     return picks_df, True, f"Locked {pick_team}"
 
-# ============================== Header ==============================
+# ============================== UI Components ==============================
 def render_header():
     name = st.session_state.get("user_name") or "Guest"
-    email = st.session_state.get("user_email") or ""
+    riot_id = st.session_state.get("riot_id") or ""
+    
+    display_name = name[:12] + "..." if len(name) > 12 else name
+    display_subtitle = riot_id[:20] + "..." if len(riot_id) > 20 else riot_id
+    
     st.markdown(f"""
     <div class="main-header">
-        <div class="header-title">{icon_html("vct.png", 45)} VCT SURVIVOR</div>
+        <div class="header-title">{icon_html("vct.png", 35)} VCT SURVIVOR</div>
         <div class="user-section">
-                            <span style="color:#111827;">{ms("person",18)} {name}</span>
-                <span style="color:#6b7280; font-size:12px;">{email}</span>
+            <span style="color:#111827; font-size: 14px;">{ms("person",16)} {display_name}</span>
+            <span style="color:#6b7280; font-size:11px; display:block;">{display_subtitle}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Sidebar sign-out row with your PNG icon
-    with st.sidebar:
-        c1, c2 = st.columns([0.15, 0.85])
-        c1.markdown(icon_html("logout.png", 18), unsafe_allow_html=True)
-        if c2.button("Sign Out", use_container_width=True):
-            st.session_state.authenticated = False
-            st.session_state.user_email = None
-            st.session_state.user_name = None
-            st.session_state.current_page = "Home"
-            st.rerun()
-
-# ============================== Sidebar (PNG icons) ==============================
 def render_sidebar():
     with st.sidebar:
-
-
-        # Map label -> icon file. Replace with your own filenames if different:
-        nav_items = [
-            ("Home",        "home.png"),
-            ("Leaderboard", "leaderboard.png"),
-            ("My Stats",    "leaderboard.png"),   # <- change to your stats icon file, e.g. "stats.png"
-            ("Schedule",    "schedule.png"),
-            ("Admin",       "setting.png"),       # <- change to your admin icon file if different
+        st.markdown("### Navigation")
+        
+        nav_buttons = [
+            ("Home", "🏠"),
+            ("Leaderboard", "🏆"), 
+            ("My Stats", "📊"),
+            ("Schedule", "📅"),
+            ("Admin", "⚙️")
         ]
-
-        current = st.session_state.current_page
-
-        for label, icon_file in nav_items:
-            active = (current == label)
-            
-            # Create a container for the navigation row
-            col1, col2 = st.columns([0.9, 0.1])
-            
-            with col1:
-                # Show the styled navigation row
-                st.markdown(
-                    f"""
-                    <div class="nav-row {'active' if active else ''}">
-                        {icon_html(icon_file, 18)}
-                        <span class="nav-label">{label}</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-            
-            with col2:
-                # Small, invisible button that's easier to click
-                if st.button("", key=f"nav_{label}", help=label):
-                    st.session_state.current_page = label
-                    st.rerun()
+        
+        for button_name, emoji in nav_buttons:
+            if st.button(f"{emoji} {button_name}", key=f"nav_{button_name}", use_container_width=True):
+                st.session_state.current_page = button_name
+                st.rerun()
 
         st.markdown("---")
         st.markdown("### Quick Stats")
@@ -1305,6 +776,14 @@ def render_sidebar():
         c1, c2 = st.columns(2)
         with c1: st.metric("Wins", wins)
         with c2: st.metric("Losses", losses)
+        
+        st.markdown("---")
+        if st.button("Sign Out", key="sign_out"):
+            for key in ['authenticated', 'user_email', 'user_name', 'riot_id']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.session_state.current_page = "Home"
+            st.rerun()
 
 # ============================== Pages ==============================
 def page_home():
@@ -1314,8 +793,8 @@ def page_home():
         assign_df = load_assignments()
         results_df = judge_results(schedule_df, picks_df)
         lb_df = compute_leaderboard(results_df)
+        
         user = st.session_state.user_name
-
         is_alive = True
         me = results_df[results_df["user"]==user]
         if not me.empty and any(me["result"]=="Loss"): 
@@ -1326,255 +805,169 @@ def page_home():
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.markdown("## 🏳️ Current Match Assignment")
+            st.markdown("## Current Match Assignment")
             act = active_stage(schedule_df)
             if not act:
-                st.info("No active stage. Wait for the next stage to begin.")
+                st.info("No active stage")
             else:
-                with st.container():
-                    st.markdown(f"<div class='game-card'><h3 style='color:var(--text);'>{act['stage_name']}</h3></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='game-card'><h3 style='color:var(--text);'>{act['stage_name']}</h3></div>", unsafe_allow_html=True)
 
-                    mid, assign_df = get_or_make_assignment(user, act["stage_id"], assign_df, schedule_df)
-                    if mid:
-                        mrow = schedule_df[schedule_df["match_id"]==mid].iloc[0]
-                        st.markdown(f"**Match ID:** `{mid}`")
+                mid, assign_df = get_or_make_assignment(user, act["stage_id"], assign_df, schedule_df)
+                if mid:
+                    mrow = schedule_df[schedule_df["match_id"]==mid].iloc[0]
+                    st.markdown(f"**Match ID:** `{mid}`")
 
-                        col_team1, col_vs, col_team2 = st.columns([2, 1, 2])
-                        with col_team1:
-                            st.markdown(team_logo_html(mrow['team_a']), unsafe_allow_html=True)
-                            st.markdown(f"<h3 style='text-align:center;color:var(--text);margin:10px 0;font-family: Poppins, sans-serif;font-weight:700;text-shadow:0 0 10px rgba(200, 191, 155, 0.3);'>{mrow['team_a']}</h3>", unsafe_allow_html=True)
-                        with col_vs:
-                            st.markdown("<div style='text-align:center;padding-top:30px;'><h2 style='color:var(--accent);font-family: Poppins, sans-serif;font-weight:800;text-shadow:0 0 15px rgba(200, 191, 155, 0.5);'>VS</h2></div>", unsafe_allow_html=True)
-                        with col_team2:
-                            st.markdown(team_logo_html(mrow['team_b']), unsafe_allow_html=True)
-                            st.markdown(f"<h3 style='text-align:center;color:var(--text);margin:10px 0;font-family: Orbitron, monospace;font-weight:700;text-shadow:0 0 10px rgba(200, 191, 155, 0.3);'>{mrow['team_b']}</h3>", unsafe_allow_html=True)
+                    col_team1, col_vs, col_team2 = st.columns([2, 1, 2])
+                    with col_team1:
+                        st.markdown(team_logo_html(mrow['team_a']), unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='text-align:center;color:var(--text);'>{mrow['team_a']}</h3>", unsafe_allow_html=True)
+                    with col_vs:
+                        st.markdown("<div style='text-align:center;padding-top:30px;'><h2 style='color:var(--accent);'>VS</h2></div>", unsafe_allow_html=True)
+                    with col_team2:
+                        st.markdown(team_logo_html(mrow['team_b']), unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='text-align:center;color:var(--text);'>{mrow['team_b']}</h3>", unsafe_allow_html=True)
 
-                        local_str = fmt_local(mrow['match_time_iso'])
-                        utc_str = fmt_utc(mrow['match_time_iso'])
-                        lock_dt = pd.to_datetime(mrow['match_time_iso'], utc=True, errors="coerce") - pd.Timedelta(minutes=LOCK_MINUTES_BEFORE)
-                        lock_str = fmt_local(lock_dt.isoformat())
+                    col_time1, col_time2 = st.columns(2)
+                    with col_time1:
+                        st.markdown(f"Starts in: {countdown_to(mrow['match_time_iso'])}")
+                        st.caption(f"Local: **{fmt_local(mrow['match_time_iso'])}**")
+                    with col_time2:
+                        st.markdown(f"Locks: {LOCK_MINUTES_BEFORE}m before")
 
-                        col_time1, col_time2 = st.columns(2)
-                        with col_time1:
-                            st.markdown(f"⏱️ **Starts in:** {countdown_to(mrow['match_time_iso'])}")
-                            st.caption(f"Local: **{local_str}**  ·  <span title='{utc_str}'>UTC shown on hover</span>", unsafe_allow_html=True)
-                        with col_time2:
-                            st.markdown(f"🔒 **Locks:** {LOCK_MINUTES_BEFORE}m before")
-                            st.caption(f"Lock deadline (local): **{lock_str}**")
-
-                        existing = picks_df[(picks_df["user"]==user) & (picks_df["stage_id"]==act["stage_id"])]
-                        if not existing.empty:
-                            st.success(f"✅ You picked: **{existing.iloc[0]['pick_team']}**")
-                        elif not can_pick(schedule_df, mid):
-                            st.error("Picks are locked for this match")
-                        else:
-                            with st.form("pick_form"):
-                                pick = st.selectbox("Select winner:", [mrow["team_a"], mrow["team_b"]])
-                                if st.form_submit_button("Lock Pick ✅", use_container_width=True):
-                                    picks_df, ok, msg = record_pick(picks_df, user, act["stage_id"], mid, pick)
-                                    if ok:
-                                        save_picks(picks_df); st.success(msg); st.balloons(); st.rerun()
-                                    else:
-                                        st.error(msg)
-                    save_assign(assign_df)
+                    existing = picks_df[(picks_df["user"]==user) & (picks_df["stage_id"]==act["stage_id"])]
+                    if not existing.empty:
+                        st.success(f"You picked: **{existing.iloc[0]['pick_team']}**")
+                    elif not can_pick(schedule_df, mid):
+                        st.error("Picks are locked")
+                    else:
+                        with st.form("pick_form"):
+                            pick = st.selectbox("Select winner:", [mrow["team_a"], mrow["team_b"]])
+                            if st.form_submit_button("Lock Pick", use_container_width=True):
+                                picks_df, ok, msg = record_pick(picks_df, user, act["stage_id"], mid, pick)
+                                if ok:
+                                    save_picks(picks_df)
+                                    st.success(msg)
+                                    st.balloons()
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
+                save_assign(assign_df)
 
         with col2:
             st.markdown("## Quick Leaderboard")
+            
             if not lb_df.empty:
+                current_user = st.session_state.get("user_name", "")
+                
+                users_to_show = []
+                
+                # Add top 4
+                for i in range(min(4, len(lb_df))):
+                    row = lb_df.iloc[i]
+                    users_to_show.append({'user': row['user'], 'rank': i+1, 'wins': row['wins'], 'alive': row['alive']})
+                
+                # Add current user if not in top 4
+                current_user_in_top4 = any(u['user'] == current_user for u in users_to_show)
+                if not current_user_in_top4:
+                    user_row = lb_df[lb_df['user'] == current_user]
+                    if not user_row.empty:
+                        user_rank = user_row.index[0] + 1
+                        users_to_show.append({
+                            'user': current_user, 
+                            'rank': user_rank, 
+                            'wins': user_row.iloc[0]['wins'], 
+                            'alive': user_row.iloc[0]['alive']
+                        })
+                
                 st.markdown('<div class="leaderboard-container">', unsafe_allow_html=True)
-                for pos, (_, row) in enumerate(lb_df.head(5).iterrows(), start=1):
-                    rank = pos
-                    rank_class = f"rank-{rank}" if rank <= 3 else "rank-other"
-                    rank_icon = "👑" if rank == 1 else f"#{rank}"
+                for user_data in users_to_show:
+                    is_current = user_data['user'] == current_user
+                    rank = user_data['rank']
+                    
+                    username = user_data['user']
+                    display_username = username[:8] + "..." if len(username) > 8 else username
+                    if is_current:
+                        display_username += " (YOU)"
+                    
+                    if is_current:
+                        border = "border: 2px solid #c8bf9b; background: rgba(200, 191, 155, 0.15);"
+                        text_style = "font-weight:700; color:#c8bf9b; font-size: 12px;"
+                    else:
+                        border = ""
+                        text_style = "font-weight:500; color:#ffffff; font-size: 12px;"
+                    
                     st.markdown(f'''
-                    <div class="leaderboard-row">
-                        <div class="rank-badge {rank_class}">{rank_icon}</div>
-                        <div style="flex:1;font-weight:600;">{row['user']}</div>
-                        <div style="color:#000000;margin-right:12px;">{row['wins']}W</div>
-                        <div class="{'status-alive' if row['alive'] else 'status-dead'}">{'ALIVE' if row['alive'] else 'DEAD'}</div>
+                    <div class="leaderboard-row" style="{border}">
+                        <div class="rank-badge">{rank}</div>
+                        <div style="flex:1; {text_style} overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70px;">{display_username}</div>
+                        <div style="background:#f3f4f6;padding:2px 6px;border-radius:4px;color:#000000;font-size:10px;min-width:25px;text-align:center;">{user_data['wins']}W</div>
+                        <div class="status-alive">ALIVE</div>
                     </div>
                     ''', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("No players yet")
     
     except Exception as e:
-        st.error(f"An error occurred while loading the home page: {e}")
-        st.info("Please try refreshing the page or contact support if the issue persists.")
+        st.error(f"Error: {e}")
 
 def page_leaderboard():
-    try:
-        results_df = judge_results(load_schedule(), load_picks())
-        lb_df = compute_leaderboard(results_df)
-        st.markdown("# 🏆 Global Leaderboard")
-
-        if lb_df.empty:
-            st.info("No players have made picks yet")
-            return
-
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.markdown(f"<div class='stat-card'><div class='stat-value'>{len(lb_df)}</div><div class='stat-label'>Total Players</div></div>", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"<div class='stat-card'><div class='stat-value'>{lb_df['alive'].sum()}</div><div class='stat-label'>Still Alive</div></div>", unsafe_allow_html=True)
-        with c3:
-            st.markdown(f"<div class='stat-card'><div class='stat-value'>{(~lb_df['alive']).sum()}</div><div class='stat-label'>Eliminated</div></div>", unsafe_allow_html=True)
-        with c4:
-            st.markdown(f"<div class='stat-card'><div class='stat-value'>{lb_df['wins'].max() if not lb_df.empty else 0}</div><div class='stat-label'>Max Wins</div></div>", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown('<div class="leaderboard-container" style="margin-top: 20px;">', unsafe_allow_html=True)
-        for pos, (_, row) in enumerate(lb_df.iterrows(), start=1):
-            rank = pos
-            rank_class = f"rank-{rank}" if rank <= 3 else "rank-other"
-            rank_icon = "👑" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
-            stage_info = f" (Stage {int(row['first_loss_stage'])})" if not row['alive'] and pd.notna(row.get('first_loss_stage')) else ""
-            st.markdown(f'''
-            <div class="leaderboard-row">
-                <div class="rank-badge {rank_class}">{rank_icon}</div>
-                <div style="flex:1;font-weight:600;color:#111827;">{row['user']}{stage_info}</div>
-                <div style="background:#f3f4f6;padding:4px 12px;border-radius:6px;margin-right:12px;color:#000000;border:1px solid #e5e7eb;">{row['wins']} WINS</div>
-                <div class="{'status-alive' if row['alive'] else 'status-dead'}">{'ALIVE' if row['alive'] else 'DEAD'}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    results_df = judge_results(load_schedule(), load_picks())
+    lb_df = compute_leaderboard(results_df)
+    st.markdown("# Global Leaderboard")
     
-    except Exception as e:
-        st.error(f"An error occurred while loading the leaderboard: {e}")
-        st.info("Please try refreshing the page or contact support if the issue persists.")
+    if lb_df.empty:
+        st.info("No players yet")
+    else:
+        for pos, (_, row) in enumerate(lb_df.iterrows(), start=1):
+            st.markdown(f"**{pos}.** {row['user']} - {row['wins']} wins - {'ALIVE' if row['alive'] else 'DEAD'}")
 
 def page_my_stats():
-    try:
-        user = st.session_state.user_name
-        picks_df = load_picks()
-        results_df = judge_results(load_schedule(), picks_df)
-        my_results = results_df[results_df["user"]==user]
+    user = st.session_state.user_name
+    picks_df = load_picks()
+    results_df = judge_results(load_schedule(), picks_df)
+    my_results = results_df[results_df["user"]==user]
 
-        st.markdown("# 📊 My Statistics")
-        c1, c2, c3, c4 = st.columns(4)
+    st.markdown("# My Statistics")
+    wins = int((my_results["result"]=="Win").sum()) if not my_results.empty else 0
+    losses = int((my_results["result"]=="Loss").sum()) if not my_results.empty else 0
+    waiting = int((my_results["result"]=="Waiting").sum()) if not my_results.empty else 0
 
-        wins = int((my_results["result"]=="Win").sum()) if not my_results.empty else 0
-        losses = int((my_results["result"]=="Loss").sum()) if not my_results.empty else 0
-        waiting = int((my_results["result"]=="Waiting").sum()) if not my_results.empty else 0
-        total = len(my_results)
-
-        with c1: st.metric("Total Picks", total)
-        with c2: st.metric("Wins", wins, f"{(wins/total*100):.0f}%" if total > 0 else "—")
-        with c3: st.metric("Losses", losses)
-        with c4: st.metric("Pending", waiting)
-
-        st.markdown("---")
-        st.markdown("## Pick History")
-        my_picks = picks_df[picks_df["user"]==user]
-        if my_picks.empty: 
-            st.info("You haven't made any picks yet")
-        else: 
-            st.dataframe(my_picks.sort_values("stage_id", ascending=False), use_container_width=True, hide_index=True)
-    
-    except Exception as e:
-        st.error(f"An error occurred while loading your stats: {e}")
-        st.info("Please try refreshing the page or contact support if the issue persists.")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Wins", wins)
+    with c2: st.metric("Losses", losses)  
+    with c3: st.metric("Pending", waiting)
 
 def page_schedule():
-    try:
-        schedule_df = load_schedule()
-        st.markdown("# 🗓️ Match Schedule")
-        if schedule_df.empty:
-            st.info("No matches scheduled yet")
-        else:
-            df = schedule_df.copy()
-            df["match_time_local"] = df["match_time_iso"].apply(fmt_local)
-            df["match_time_utc"]   = df["match_time_iso"].apply(fmt_utc)
-            
-            # Show data table
-            st.markdown("## 📊 Schedule Data")
-            st.dataframe(df[["stage_id","stage_name","match_id","team_a","team_b","match_time_local","match_time_utc","winner_team"]],
-                         use_container_width=True, hide_index=True)
-            
-            # Show visual schedule with team logos
-            st.markdown("## 🎮 Visual Schedule")
-            for _, match in df.iterrows():
-                col1, col2, col3, col4 = st.columns([1, 2, 1, 2])
-                
-                with col1:
-                    st.markdown(team_logo_html(match['team_a']), unsafe_allow_html=True)
-                
-                with col2:
-                    st.markdown(f"<h4 style='text-align:center;color:var(--text);margin:10px 0;font-family: Orbitron, monospace;font-weight:700;'>{match['team_a']}</h4>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align:center;color:var(--text-muted);margin:5px 0;'>Stage {match['stage_id']}</p>", unsafe_allow_html=True)
-                
-                with col3:
-                    st.markdown(f"<div style='text-align:center;padding-top:20px;'><h3 style='color:var(--accent);font-family: Poppins, sans-serif;font-weight:800;'>VS</h3></div>", unsafe_allow_html=True)
-                
-                with col4:
-                    st.markdown(team_logo_html(match['team_b']), unsafe_allow_html=True)
-                
-                st.markdown(f"<h4 style='text-align:center;color:var(--text);margin:10px 0;font-family: Orbitron, monospace;font-weight:700;'>{match['team_b']}</h4>", unsafe_allow_html=True)
-                
-                # Match time and status
-                st.markdown(f"""
-                <div class="match-info">
-                    <div class="match-time">⏰ {match['match_time_local']}</div>
-                    <div class="match-status">Match ID: {match['match_id']}</div>
-                    {f'<div style="color:var(--accent);font-weight:600;margin-top:10px;">🏆 Winner: {match["winner_team"]}</div>' if match['winner_team'] else ''}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("---")
-    
-    except Exception as e:
-        st.error(f"An error occurred while loading the schedule: {e}")
-        st.info("Please try refreshing the page or contact support if the issue persists.")
+    schedule_df = load_schedule()
+    st.markdown("# Match Schedule")
+    if schedule_df.empty:
+        st.info("No matches scheduled")
+    else:
+        st.dataframe(schedule_df, use_container_width=True, hide_index=True)
 
 def page_admin():
-    try:
-        st.markdown("# ⚙️ Admin Panel")
-        entered = st.text_input("Admin key:", type="password")
-        if entered and os.environ.get(ADMIN_KEY_ENV) and entered == os.environ.get(ADMIN_KEY_ENV):
-            st.success("Admin access granted")
-            schedule_df = load_schedule()
-            st.download_button("📥 Download schedule.csv", schedule_df.to_csv(index=False), "schedule.csv")
-            up = st.file_uploader("📤 Upload new schedule.csv", type=["csv"])
-            if up:
-                try:
-                    new_sched = pd.read_csv(up, dtype=str).fillna("")
-                except Exception as e:
-                    st.error(f"Failed reading schedule: {e}")
-                    return
-                missing = REQ_SCHEDULE_COLS - set(new_sched.columns)
-                if missing: 
-                    st.error(f"Uploaded schedule missing columns: {', '.join(sorted(missing))}")
-                else:
-                    new_sched.to_csv(SCHEDULE_CSV, index=False)
-                    st.success("Schedule updated!")
-                    st.rerun()
-        else:
-            st.info("Enter admin key to access admin features")
-    
-    except Exception as e:
-        st.error(f"An error occurred in the admin panel: {e}")
-        st.info("Please try refreshing the page or contact support if the issue persists.")
+    st.markdown("# Admin Panel")
+    st.info("Admin features go here")
 
-# ============================== Router ==============================
+# ============================== Main App ==============================
 def main_app():
-    inject_icons_css()
     inject_premium_css()
     ensure_files()
-
     render_header()
     render_sidebar()
 
     page = st.session_state.current_page
     if page == "Home": page_home()
     elif page == "Leaderboard": page_leaderboard()
-    elif page == "My Stats" or page == "Stats": page_my_stats()
+    elif page == "My Stats": page_my_stats()
     elif page == "Schedule": page_schedule()
     elif page == "Admin": page_admin()
-    else: page_home()
 
-# ============================== Entrypoint ==============================
+# ============================== Entry Point ==============================
 if __name__ == "__main__":
     init_session_state()
     if not st.session_state.authenticated:
-        if st.session_state.show_google_signin: show_google_signin()
-        else: show_initial_login()
+        show_initial_login()
     else:
         main_app()
