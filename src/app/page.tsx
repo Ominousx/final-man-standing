@@ -29,8 +29,13 @@ export default function Home() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string>("");
-  const [userPicks, setUserPicks] = useState<UserPick[]>([]);
-  const [userStats, setUserStats] = useState<any>(null);
+  const [userStats, setUserStats] = useState<{
+    totalPicks: number;
+    wins: number;
+    losses: number;
+    pending: number;
+    winRate: string;
+  } | null>(null);
   const [hasPicked, setHasPicked] = useState(false);
 
   // Load user data and match assignment
@@ -43,13 +48,12 @@ export default function Home() {
       }
       setCurrentMatch(match);
 
-      // Load user picks and stats
-      const picks = getUserPicks(user.id);
-      setUserPicks(picks);
+      // Load user stats
       setUserStats(getUserStats(user.id));
 
       // Check if user already picked for current match
       if (match) {
+        const picks = getUserPicks(user.id);
         const hasPickedForMatch = picks.some(p => p.matchId === match!.id);
         setHasPicked(hasPickedForMatch);
       }
@@ -72,9 +76,6 @@ export default function Home() {
       const success = submitPick(user.id, currentMatch.id, selectedTeam);
       if (success) {
         setHasPicked(true);
-        // Reload user data
-        const picks = getUserPicks(user.id);
-        setUserPicks(picks);
         setUserStats(getUserStats(user.id));
         setSelectedTeam("");
       }
@@ -84,7 +85,6 @@ export default function Home() {
   const handleCompleteMatch = (winner: string) => {
     if (currentMatch) {
       completeMatch(currentMatch.id, winner);
-      // Reload data
       if (user) {
         let newMatch = getUserCurrentMatch(user.id);
         if (!newMatch) {
@@ -96,11 +96,6 @@ export default function Home() {
         setHasPicked(false);
       }
     }
-  };
-
-  const formatTime = (timeString: string) => {
-    const date = new Date(timeString);
-    return date.toLocaleString();
   };
 
   if (!isAuthenticated) {
@@ -134,7 +129,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -166,20 +160,13 @@ export default function Home() {
           </TabsList>
 
           <TabsContent value="home" className="space-y-6">
-            {/* Status Badge */}
             <div className="text-center">
               <Badge variant={user?.isAlive ? "default" : "destructive"} className="text-lg px-6 py-2">
                 {user?.isAlive ? "ALIVE" : "ELIMINATED"}
               </Badge>
-              {!user?.isAlive && user?.eliminatedAt && (
-                <div className="text-sm text-muted-foreground mt-2">
-                  Eliminated at {user.eliminatedAt}
-                </div>
-              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Current Match */}
               <div className="lg:col-span-2">
                 <Card className="game-card">
                   <CardHeader>
@@ -200,7 +187,7 @@ export default function Home() {
                             <div className="font-semibold">{currentMatch.teamA}</div>
                           </div>
                           
-                          <div className="vs-separator">VS</div>
+                          <div className="text-2xl font-bold text-primary text-center animate-pulse">VS</div>
                           
                           <div className="text-center">
                             <div className="team-logo bg-secondary flex items-center justify-center mb-2">
@@ -210,25 +197,11 @@ export default function Home() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4 text-center">
-                          <div>
-                            <div className="text-sm text-muted-foreground">Starts in</div>
-                            <div className="font-semibold">1d 17h 9m</div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground">Locks</div>
-                            <div className="font-semibold">5m before</div>
-                          </div>
-                        </div>
-
                         {hasPicked ? (
                           <div className="text-center">
                             <Badge variant="default" className="text-lg px-6 py-2">
                               ✅ Pick Locked
                             </Badge>
-                            <div className="text-sm text-muted-foreground mt-2">
-                              Waiting for match result...
-                            </div>
                           </div>
                         ) : (
                           <div className="space-y-3">
@@ -247,7 +220,6 @@ export default function Home() {
                           </div>
                         )}
 
-                        {/* Admin section for testing */}
                         <div className="border-t pt-4">
                           <div className="text-sm text-muted-foreground mb-2">Admin: Complete Match</div>
                           <div className="flex space-x-2">
@@ -277,7 +249,6 @@ export default function Home() {
                 </Card>
               </div>
 
-              {/* Quick Leaderboard */}
               <div>
                 <Card className="game-card">
                   <CardHeader>
