@@ -6,7 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "VCT Survivor - Tournament Pool Management",
+  title: "VCT Survivor - Final Man Standing",
   description: "Manage Valorant Champions Tour survivor pool tournaments",
 };
 

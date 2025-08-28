@@ -55,7 +55,7 @@ export default function RegisterPage() {
             />
           </div>
           <h1 className="text-3xl font-bold text-yellow-400 mb-2">VCT Survivor</h1>
-          <p className="text-gray-400">Tournament Pool Management</p>
+          <p className="text-gray-400">Final Man Standing</p>
         </div>
 
         <Card className="bg-black border border-gray-800 shadow-2xl">
@@ -162,3 +162,4 @@ export default function RegisterPage() {
     </div>
   );
 }
+
