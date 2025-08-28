@@ -60,6 +60,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [userPick, setUserPick] = useState<string>("");
   const [pickSubmitted, setPickSubmitted] = useState(false);
+  const [currentRandomMatch, setCurrentRandomMatch] = useState<Match | null>(null);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -170,6 +171,9 @@ export default function Home() {
   // Generate random match when user first loads or when requested
   useEffect(() => {
     if (user && matches.length > 0 && !currentRandomMatch) {
+      // Logic for generating random match would go here
+      const randomMatch = matches[Math.floor(Math.random() * matches.length)];
+      setCurrentRandomMatch(randomMatch);
     }
   }, [user, matches, currentRandomMatch]);
 

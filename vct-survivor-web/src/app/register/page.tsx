@@ -16,7 +16,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const { register } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -31,9 +31,10 @@ export default function RegisterPage() {
     }
 
     try {
-      await register(name, email, password);
-      router.push("/login");
-    } catch (err) {
+      // Mock registration - in real app, create user with API
+      login({ name, email, role: "user" });
+      router.push("/");
+    } catch {
       setError("Registration failed. Please try again.");
     } finally {
       setIsLoading(false);
