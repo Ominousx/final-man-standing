@@ -1,256 +1,451 @@
-// Data management for VCT Survivor app
+// Data management for VCT Survivor app using Supabase
+import { supabase, TABLES } from './supabase'
+
 export interface User {
   id: string;
   name: string;
   email: string;
-  isAlive: boolean;
+  is_alive: boolean;
   wins: number;
   losses: number;
   rank: number;
-  eliminatedAt?: string;
+  eliminated_at?: string;
+  current_match_id?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Match {
   id: string;
-  teamA: string;
-  teamB: string;
+  team_a: string;
+  team_b: string;
   stage: string;
   status: 'upcoming' | 'in-progress' | 'completed';
   winner?: string;
-  startTime: string;
+  start_time: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UserPick {
   id: string;
-  userId: string;
-  matchId: string;
-  selectedTeam: string;
-  isCorrect?: boolean;
+  user_id: string;
+  match_id: string;
+  selected_team: string;
+  is_correct?: boolean;
   timestamp: string;
+  created_at: string;
 }
 
-// Mock data
-const mockMatches: Match[] = [
-  {
-    id: "UF-1-A",
-    teamA: "Sentinels",
-    teamB: "G2",
-    stage: "Upper Final",
-    status: "upcoming",
-    startTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: "LF-1-B",
-    teamA: "NRG",
-    teamB: "Cloud9",
-    stage: "Lower Final",
-    status: "upcoming",
-    startTime: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-  }
-];
+// Helper function to handle Supabase errors
+function handleSupabaseError(error: any, operation: string) {
+  console.error(`Supabase ${operation} error:`, error);
+  throw new Error(`Failed to ${operation}: ${error.message}`);
+}
 
-const mockUsers: User[] = [
-  {
-    id: "user1",
-    name: "Player One",
-    email: "player1@example.com",
-    isAlive: true,
-    wins: 3,
-    losses: 0,
-    rank: 1
-  }
-];
-
-const mockPicks: UserPick[] = [];
-
-// Storage keys
-const STORAGE_KEYS = {
-  USERS: 'vct_survivor_users',
-  MATCHES: 'vct_survivor_matches',
-  PICKS: 'vct_survivor_picks'
-};
-
-// Helper functions
-function loadFromStorage<T>(key: string, defaultValue: T): T {
-  if (typeof window === 'undefined') return defaultValue;
+export async function getUser(email: string): Promise<User> {
   try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-}
+    console.log(`🔍 getUser called for email: ${email}`);
+    
+    // Check if user exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from(TABLES.USERS)
+      .select('*')
+      .eq('email', email)
+      .single();
 
-function saveToStorage<T>(key: string, value: T): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error('Failed to save to localStorage:', error);
-  }
-}
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.log(`❌ Error fetching user:`, fetchError);
+      throw fetchError;
+    }
 
-function initializeData() {
-  const users = loadFromStorage(STORAGE_KEYS.USERS, mockUsers);
-  const matches = loadFromStorage(STORAGE_KEYS.MATCHES, mockMatches);
-  const picks = loadFromStorage(STORAGE_KEYS.PICKS, mockPicks);
-  return { users, matches, picks };
-}
+    if (existingUser) {
+      console.log(`✅ Found existing user:`, existingUser);
+      return existingUser;
+    }
 
-export function getUser(email: string): User {
-  const { users } = initializeData();
-  let user = users.find(u => u.email === email);
-  
-  if (!user) {
-    user = {
-      id: `user_${Date.now()}`,
+    console.log(`🆕 User not found, creating new user...`);
+    
+    // Create new user
+    const newUser = {
       name: email.split('@')[0],
       email,
-      isAlive: true,
+      is_alive: true,
       wins: 0,
       losses: 0,
-      rank: users.length + 1
+      rank: 1
     };
-    users.push(user);
-    saveToStorage(STORAGE_KEYS.USERS, users);
-  }
-  
-  return user;
-}
 
-export function getUserCurrentMatch(userId: string): Match | null {
-  const { users, matches, picks } = initializeData();
-  const user = users.find(u => u.id === userId);
-  if (!user || !user.isAlive) return null;
-  
-  const userPicks = picks.filter(p => p.userId === userId);
-  const completedMatches = userPicks.filter(p => {
-    const match = matches.find(m => m.id === p.matchId);
-    return match && match.status === 'completed';
-  });
-  
-  if (completedMatches.length > 0) {
-    const availableMatches = matches.filter(m => 
-      m.status === 'upcoming' && 
-      !userPicks.some(p => p.matchId === m.id)
-    );
-    if (availableMatches.length > 0) {
-      return availableMatches[0];
+    console.log(`📝 Inserting new user:`, newUser);
+
+    const { data: user, error: insertError } = await supabase
+      .from(TABLES.USERS)
+      .insert(newUser)
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error(`❌ Failed to insert user:`, insertError);
+      throw insertError;
     }
+    
+    console.log(`✅ Successfully created user:`, user);
+    return user;
+  } catch (error) {
+    console.error(`💥 Error in getUser:`, error);
+    handleSupabaseError(error, 'get user');
   }
-  
-  const firstMatch = matches.find(m => m.status === 'upcoming');
-  return firstMatch || null;
 }
 
-export function assignMatchToUser(userId: string): Match | null {
-  const { users, matches, picks } = initializeData();
-  const user = users.find(u => u.id === userId);
-  if (!user || !user.isAlive) return null;
-  
-  const userPicks = picks.filter(p => p.userId === userId);
-  const availableMatches = matches.filter(m => 
-    m.status === 'upcoming' && 
-    !userPicks.some(p => p.matchId === m.id)
-  );
-  
-  return availableMatches.length > 0 ? availableMatches[0] : null;
-}
+export async function getUserCurrentMatch(userId: string): Promise<Match | null> {
+  try {
+    console.log(`🔍 getUserCurrentMatch called for user: ${userId}`);
+    
+    // Get user data
+    const { data: user, error: userError } = await supabase
+      .from(TABLES.USERS)
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-export function submitPick(userId: string, matchId: string, selectedTeam: string): boolean {
-  const { users, matches, picks } = initializeData();
-  const user = users.find(u => u.id === userId);
-  const match = matches.find(m => m.id === matchId);
-  
-  if (!user || !match || match.status !== 'upcoming') {
-    return false;
-  }
-  
-  const existingPick = picks.find(p => p.userId === userId && p.matchId === matchId);
-  if (existingPick) {
-    return false;
-  }
-  
-  const newPick: UserPick = {
-    id: `pick_${Date.now()}`,
-    userId,
-    matchId,
-    selectedTeam,
-    timestamp: new Date().toISOString()
-  };
-  
-  picks.push(newPick);
-  saveToStorage(STORAGE_KEYS.PICKS, picks);
-  return true;
-}
+    if (userError) throw userError;
+    if (!user || !user.is_alive) return null;
 
-export function completeMatch(matchId: string, winner: string): boolean {
-  const { users, matches, picks } = initializeData();
-  const match = matches.find(m => m.id === matchId);
-  if (!match || match.status !== 'upcoming') {
-    return false;
-  }
-  
-  match.status = 'completed';
-  match.winner = winner;
-  
-  const matchPicks = picks.filter(p => p.matchId === matchId);
-  matchPicks.forEach(pick => {
-    pick.isCorrect = pick.selectedTeam === winner;
-    const user = users.find(u => u.id === pick.userId);
-    if (user) {
-      if (pick.isCorrect) {
-        user.wins++;
+    console.log(`👤 User data:`, {
+      id: user.id,
+      email: user.email,
+      current_match_id: user.current_match_id,
+      is_alive: user.is_alive
+    });
+
+    // FIRST PRIORITY: Check if user already has a match assigned
+    if (user.current_match_id) {
+      console.log(`🎯 User has current_match_id: ${user.current_match_id}`);
+      
+      const { data: assignedMatch, error: matchError } = await supabase
+        .from(TABLES.MATCHES)
+        .select('*')
+        .eq('id', user.current_match_id)
+        .eq('status', 'upcoming')
+        .single();
+
+      if (matchError && matchError.code !== 'PGRST116') throw matchError;
+      if (assignedMatch) {
+        console.log(`✅ Returning existing assigned match: ${assignedMatch.team_a} vs ${assignedMatch.team_b}`);
+        return assignedMatch;
       } else {
-        user.losses++;
-        user.isAlive = false;
-        user.eliminatedAt = new Date().toISOString();
+        console.log(`❌ Assigned match not found or not upcoming`);
+      }
+    } else {
+      console.log(`❌ User has NO current_match_id`);
+    }
+
+    // SECOND PRIORITY: Check if user has a pending pick
+    const { data: pendingPick, error: pickError } = await supabase
+      .from(TABLES.PICKS)
+      .select('*')
+      .eq('user_id', userId)
+      .is('is_correct', null)
+      .single();
+
+    if (pickError && pickError.code !== 'PGRST116') throw pickError;
+
+    if (pendingPick) {
+      const { data: match, error: matchError } = await supabase
+        .from(TABLES.MATCHES)
+        .select('*')
+        .eq('id', pendingPick.match_id)
+        .eq('status', 'upcoming')
+        .single();
+
+      if (matchError && matchError.code !== 'PGRST116') throw matchError;
+      if (match) {
+        console.log(`User ${userId} has pending pick for match: ${match.team_a} vs ${match.team_b}`);
+        return match;
       }
     }
-  });
-  
-  users.sort((a, b) => b.wins - a.wins);
-  users.forEach((user, index) => {
-    user.rank = index + 1;
-  });
-  
-  saveToStorage(STORAGE_KEYS.MATCHES, matches);
-  saveToStorage(STORAGE_KEYS.USERS, users);
-  saveToStorage(STORAGE_KEYS.PICKS, picks);
-  
-  return true;
+
+    // Get user's completed picks
+    const { data: userPicks, error: picksError } = await supabase
+      .from(TABLES.PICKS)
+      .select('*')
+      .eq('user_id', userId)
+      .not('is_correct', 'is', null);
+
+    if (picksError) throw picksError;
+
+    // If no completed picks, assign first available match
+    if (userPicks.length === 0) {
+      const { data: firstMatch, error: matchError } = await supabase
+        .from(TABLES.MATCHES)
+        .select('*')
+        .eq('status', 'upcoming')
+        .limit(1)
+        .single();
+
+      if (matchError && matchError.code !== 'PGRST116') throw matchError;
+      if (firstMatch) {
+        // Assign match to user
+        console.log(`🔄 Assigning first match to user: ${firstMatch.id} (${firstMatch.team_a} vs ${firstMatch.team_b})`);
+        
+        const { error: updateError } = await supabase
+          .from(TABLES.USERS)
+          .update({ current_match_id: firstMatch.id })
+          .eq('id', userId);
+
+        if (updateError) {
+          console.error(`❌ Failed to update user with current_match_id:`, updateError);
+          throw updateError;
+        }
+        
+        console.log(`✅ Successfully assigned match ${firstMatch.id} to user ${userId}`);
+        return firstMatch;
+      }
+      return null;
+    }
+
+    // Check if user won their last match
+    const lastCompletedPick = userPicks[userPicks.length - 1];
+    if (lastCompletedPick.is_correct) {
+      // User won, find next available match
+      const { data: availableMatches, error: matchError } = await supabase
+        .from(TABLES.MATCHES)
+        .select('*')
+        .eq('status', 'upcoming')
+        .not('id', 'in', `(${userPicks.map(p => p.match_id).join(',')})`);
+
+      if (matchError) throw matchError;
+      if (availableMatches && availableMatches.length > 0) {
+        // Assign next match
+        const { error: updateError } = await supabase
+          .from(TABLES.USERS)
+          .update({ current_match_id: availableMatches[0].id })
+          .eq('id', userId);
+
+        if (updateError) throw updateError;
+        console.log(`User ${userId} assigned next match after win: ${availableMatches[0].team_a} vs ${availableMatches[0].team_b}`);
+        return availableMatches[0];
+      }
+    }
+
+    // User lost their last match - they're eliminated
+    console.log(`User ${userId} is eliminated - no more matches`);
+    return null;
+  } catch (error) {
+    handleSupabaseError(error, 'get user current match');
+  }
 }
 
-export function getLeaderboard(): User[] {
-  const { users } = initializeData();
-  return users.sort((a, b) => a.rank - b.rank);
+export async function assignMatchToUser(userId: string): Promise<Match | null> {
+  return getUserCurrentMatch(userId);
 }
 
-export function getUserPicks(userId: string): UserPick[] {
-  const { picks } = initializeData();
-  return picks.filter(p => p.userId === userId);
+export async function submitPick(userId: string, matchId: string, selectedTeam: string): Promise<boolean> {
+  try {
+    // Check if user and match exist
+    const { data: user, error: userError } = await supabase
+      .from(TABLES.USERS)
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (userError) throw userError;
+    if (!user || !user.is_alive) return false;
+
+    const { data: match, error: matchError } = await supabase
+      .from(TABLES.MATCHES)
+      .select('*')
+      .eq('id', matchId)
+      .eq('status', 'upcoming')
+      .single();
+
+    if (matchError) throw matchError;
+    if (!match) return false;
+
+    // Check if pick already exists
+    const { data: existingPick, error: pickError } = await supabase
+      .from(TABLES.PICKS)
+      .select('*')
+      .eq('user_id', userId)
+      .eq('match_id', matchId)
+      .single();
+
+    if (pickError && pickError.code !== 'PGRST116') throw pickError;
+    if (existingPick) return false;
+
+    // Create new pick
+    const newPick = {
+      user_id: userId,
+      match_id: matchId,
+      selected_team: selectedTeam
+    };
+
+    const { error: insertError } = await supabase
+      .from(TABLES.PICKS)
+      .insert(newPick);
+
+    if (insertError) throw insertError;
+    return true;
+  } catch (error) {
+    handleSupabaseError(error, 'submit pick');
+  }
 }
 
-export function getUserStats(userId: string): {
+export async function completeMatch(matchId: string, winner: string): Promise<boolean> {
+  try {
+    // Update match status
+    const { error: matchError } = await supabase
+      .from(TABLES.MATCHES)
+      .update({ 
+        status: 'completed', 
+        winner,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', matchId)
+      .eq('status', 'upcoming');
+
+    if (matchError) throw matchError;
+
+    // Get all picks for this match
+    const { data: matchPicks, error: picksError } = await supabase
+      .from(TABLES.PICKS)
+      .select('*')
+      .eq('match_id', matchId);
+
+    if (picksError) throw picksError;
+
+    // Update user stats and clear current match
+    for (const pick of matchPicks) {
+      const isCorrect = pick.selected_team === winner;
+      
+      const { error: pickUpdateError } = await supabase
+        .from(TABLES.PICKS)
+        .update({ is_correct: isCorrect })
+        .eq('id', pick.id);
+
+      if (pickUpdateError) throw pickUpdateError;
+
+      // Update user stats
+      const updateData = isCorrect 
+        ? { wins: pick.wins + 1 }
+        : { 
+            losses: pick.losses + 1, 
+            is_alive: false, 
+            eliminated_at: new Date().toISOString() 
+          };
+
+      const { error: userUpdateError } = await supabase
+        .from(TABLES.USERS)
+        .update(updateData)
+        .eq('id', pick.user_id);
+
+      if (userUpdateError) throw userUpdateError;
+
+      // Clear current match assignment
+      const { error: clearError } = await supabase
+        .from(TABLES.USERS)
+        .update({ current_match_id: null })
+        .eq('id', pick.user_id);
+
+      if (clearError) throw clearError;
+    }
+
+    // Update rankings
+    await updateRankings();
+    
+    return true;
+  } catch (error) {
+    handleSupabaseError(error, 'complete match');
+  }
+}
+
+async function updateRankings(): Promise<void> {
+  try {
+    const { data: users, error: usersError } = await supabase
+      .from(TABLES.USERS)
+      .select('*')
+      .order('wins', { ascending: false });
+
+    if (usersError) throw usersError;
+
+    // Update rankings
+    for (let i = 0; i < users.length; i++) {
+      const { error: updateError } = await supabase
+        .from(TABLES.USERS)
+        .update({ rank: i + 1 })
+        .eq('id', users[i].id);
+
+      if (updateError) throw updateError;
+    }
+  } catch (error) {
+    handleSupabaseError(error, 'update rankings');
+  }
+}
+
+export async function getLeaderboard(): Promise<User[]> {
+  try {
+    const { data: users, error } = await supabase
+      .from(TABLES.USERS)
+      .select('*')
+      .order('rank', { ascending: true });
+
+    if (error) throw error;
+    return users || [];
+  } catch (error) {
+    handleSupabaseError(error, 'get leaderboard');
+  }
+}
+
+export async function getUserPicks(userId: string): Promise<UserPick[]> {
+  try {
+    const { data: picks, error } = await supabase
+      .from(TABLES.PICKS)
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return picks || [];
+  } catch (error) {
+    handleSupabaseError(error, 'get user picks');
+  }
+}
+
+export async function getUserStats(userId: string): Promise<{
   totalPicks: number;
   wins: number;
   losses: number;
   pending: number;
   winRate: string;
-} | null {
-  const { users, picks } = initializeData();
-  const user = users.find(u => u.id === userId);
-  if (!user) return null;
-  
-  const userPicks = picks.filter(p => p.userId === userId);
-  const completedPicks = userPicks.filter(p => p.isCorrect !== undefined);
-  const pendingPicks = userPicks.filter(p => p.isCorrect === undefined);
-  
-  return {
-    totalPicks: userPicks.length,
-    wins: user.wins,
-    losses: user.losses,
-    pending: pendingPicks.length,
-    winRate: completedPicks.length > 0 ? (user.wins / completedPicks.length * 100).toFixed(1) : '0.0'
-  };
+} | null> {
+  try {
+    const { data: user, error: userError } = await supabase
+      .from(TABLES.USERS)
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (userError) throw userError;
+    if (!user) return null;
+
+    const { data: picks, error: picksError } = await supabase
+      .from(TABLES.PICKS)
+      .select('*')
+      .eq('user_id', userId);
+
+    if (picksError) throw picksError;
+
+    const completedPicks = picks.filter(p => p.is_correct !== null);
+    const pendingPicks = picks.filter(p => p.is_correct === null);
+
+    return {
+      totalPicks: picks.length,
+      wins: user.wins,
+      losses: user.losses,
+      pending: pendingPicks.length,
+      winRate: completedPicks.length > 0 ? (user.wins / completedPicks.length * 100).toFixed(1) : '0.0'
+    };
+  } catch (error) {
+    handleSupabaseError(error, 'get user stats');
+  }
 }
