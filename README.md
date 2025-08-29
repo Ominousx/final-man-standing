@@ -203,12 +203,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 🌟 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/vct-survivor&type=Date)](https://star-history.com/#yourusername/vct-survivor&Date)
-
----
-
 <div align="center">
 
 **Made with ❤️ for the Valorant community**
