@@ -194,11 +194,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Tailwind CSS** - Utility-first CSS framework
 
 ---
-
-<div align="center">
-
-**Made with ❤️ for the Valorant community**
-
-[Play Now](https://vct-survivor.vercel.app) • [GitHub](https://github.com/yourusername/vct-survivor) • [Report Bug](https://github.com/yourusername/vct-survivor/issues)
-
-</div>
