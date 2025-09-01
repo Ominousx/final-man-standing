@@ -195,14 +195,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 📞 Support
-
-- **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/vct-survivor/issues)
-- **Discord**: Join our community server
-- **Email**: Contact us at support@vctsurvivor.com
-
----
-
 <div align="center">
 
 **Made with ❤️ for the Valorant community**
